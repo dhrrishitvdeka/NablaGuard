@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.4.0 — Unreleased
+
+- Added layered full checkpoints, step metadata, and batch/data-state capture.
+- Added Python, NumPy, PyTorch CPU, and available CUDA RNG capture and restoration.
+- Added environment metadata with explicit determinism limitations.
+- Added bounded-content tensor fingerprints for divergence localization.
+- Added nearest-checkpoint restore and callback-driven interval replay.
+- Added exact fingerprint/RNG validation, environment diffs, and first divergence.
+- Added replay accuracy benchmark and `nabla replay` factory/callback integration.
+
+## 0.3.0
 
 - Added selective eager ATen instrumentation for sensitive numerical operations.
 - Added FP64 shadow execution with absolute, relative, finite-state, and ULP evidence.

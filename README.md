@@ -6,7 +6,8 @@ NablaGuard is a PyTorch-first toolkit for numerical verification, gradient
 analysis, differentiable operator testing, deterministic training replay, and
 failure bisection. Version 0.3 implements the verification foundation,
 tensor-aware diffcheck, selective eager numerical instrumentation, and
-experimental precision auditing; replay and bisection remain later roadmap work.
+experimental precision auditing, layered training capture, and deterministic
+replay validation; training bisection remains later roadmap work.
 
 ## Catch a broken backward
 
@@ -171,3 +172,44 @@ Importable callables can be checked in CI with meaningful exit codes:
 nabla check package.ops:my_op --reference torch:sin --shape 32 --trials 100
 nabla sanitize train.py --mode deep
 ```
+
+## Capture and replay training boundaries
+
+```python
+with ng.capture(
+    model,
+    optimizer,
+    checkpoint_every=1000,
+    metadata_every=1,
+) as recorder:
+    for step, (x, y) in enumerate(loader, start=1):
+        loss = train_step(x, y)
+        recorder.record_step(
+            step=step,
+            loss=loss,
+            batch_indices=batch_indices,
+            tensors={"layer.weight": model.layer.weight},
+        )
+```
+
+Capture stores a full state boundary at step 0 and periodically thereafter,
+plus step metadata, Python/NumPy/PyTorch RNG state, batch identity, and bounded
+tensor fingerprints. The manifest always lists determinism limitations.
+
+```python
+result = ng.replay(
+    recorder.run_path,
+    model=fresh_model,
+    optimizer=fresh_optimizer,
+    step_fn=replay_one_step,
+    from_step=0,
+    to_step=500,
+)
+result.print()
+```
+
+The callback must reconstruct data from captured batch metadata and returns the
+same named tensors that were fingerprinted. Replay reports exact checksum and
+RNG matches, the first divergence, environment differences, or `UNVERIFIED`
+when the callback returns no tensors. Restoration alone is never called proof
+of determinism.

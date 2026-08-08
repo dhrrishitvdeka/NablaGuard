@@ -22,9 +22,15 @@ rules, mathematical overflow/underflow/cancellation checks, propagation metadata
 zero-modification CLI execution, and bounded precision auditing against explicit
 error budgets.
 
+## 0.4 — Capture and replay (implemented)
+
+Layered full checkpoints and step metadata; Python, NumPy, CPU/CUDA RNG capture;
+environment and determinism limitations; bounded tensor fingerprints; nearest-
+checkpoint restoration; exact fingerprint/RNG replay validation and first-
+divergence reporting.
+
 ## Later releases
 
-Training capture and deterministic replay (0.4), checkpoint-aware training
-bisection (0.5), per-sample gradient analysis (0.6), and kernel/JVP/higher-order
-verification (0.7). Version 1.0 requires a stable API, credible benchmarks,
-documented cost, and real-world compatibility evidence.
+Checkpoint-aware training bisection (0.5), per-sample gradient analysis (0.6),
+and kernel/JVP/higher-order verification (0.7). Version 1.0 requires a stable
+API, credible benchmarks, documented cost, and real-world compatibility evidence.

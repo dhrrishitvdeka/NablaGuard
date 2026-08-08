@@ -7,15 +7,16 @@ import importlib
 import json
 import runpy
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 
 from nablaguard import __version__
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
 from nablaguard.check.specs import TensorSpec, TensorStrategy, shapes, tensor
+from nablaguard.replay import replay
 from nablaguard.sanitize import guard
 
 
@@ -50,6 +51,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sanitize_parser.add_argument("--shadow", action="store_true")
     sanitize_parser.add_argument("script_args", nargs=argparse.REMAINDER)
+    replay_parser = subcommands.add_parser(
+        "replay", help="restore and verify a captured training run"
+    )
+    replay_parser.add_argument("run", type=Path)
+    replay_parser.add_argument("--model-factory", required=True)
+    replay_parser.add_argument("--step-function", required=True)
+    replay_parser.add_argument("--optimizer-factory")
+    replay_parser.add_argument("--from-step", type=int, default=0)
+    replay_parser.add_argument("--to-step", type=int)
+    replay_parser.add_argument("--continue-on-divergence", action="store_true")
     return parser
 
 
@@ -109,6 +120,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.argv = original_argv
         monitor.print()
         return 1 if monitor.issues else 0
+    if arguments.command == "replay":
+        model_factory = _load_callable(arguments.model_factory)
+        step_function = _load_callable(arguments.step_function)
+        optimizer_factory = (
+            _load_callable(arguments.optimizer_factory) if arguments.optimizer_factory else None
+        )
+        model = model_factory()
+        if not isinstance(model, torch.nn.Module):
+            raise TypeError("model factory must return torch.nn.Module")
+        optimizer = optimizer_factory(model) if optimizer_factory else None
+
+        def invoke_step(step: int, metadata: dict[str, Any]) -> Mapping[str, torch.Tensor] | None:
+            return cast(
+                Mapping[str, torch.Tensor] | None,
+                step_function(model, optimizer, step, metadata),
+            )
+
+        replay_result = replay(
+            arguments.run,
+            model=model,
+            optimizer=optimizer,
+            step_fn=invoke_step,
+            from_step=arguments.from_step,
+            to_step=arguments.to_step,
+            stop_on_divergence=not arguments.continue_on_divergence,
+        )
+        replay_result.print()
+        return 0 if replay_result.passed else 1
     parser.print_help()
     return 0
 

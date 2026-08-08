@@ -65,6 +65,25 @@ capture has an element bound and reports skipped modules. Because a whole model
 runs at each dtype, a module's observed error can include upstream propagation;
 the result is empirical placement guidance, not an isolated kernel proof.
 
+## Capture and replay boundaries
+
+A full checkpoint at step N means model, optimizer, scheduler, scaler, extra
+state, and RNG *after* step N. Capture entry writes boundary 0. Completed step
+records contain loss, batch identity, user-selected tensor fingerprints,
+data-loader metadata, and the post-step RNG digest/state. Periodic full
+checkpoints bound restoration cost while per-step metadata stays small.
+
+Fingerprints compute statistics and a SHA-256 checksum over at most a configured
+number of evenly spaced elements. Sampling non-contiguous large tensors uses
+coordinate indexing and does not first materialize a complete contiguous copy.
+
+Replay restores the nearest full checkpoint at or before the requested boundary,
+then calls user code for every intervening step. The callback is responsible for
+reconstructing data and external state from metadata. Fingerprints and RNG
+digests produce `MATCH`, `DIVERGENCE`, or `UNVERIFIED`. Trusted local checkpoint
+loading uses Python pickle through `torch.load`; untrusted run directories must
+not be replayed.
+
 ## Diffcheck search and shrinking
 
 `TensorStrategy` resolves through a private Python RNG into concrete
