@@ -46,12 +46,20 @@ class Recorder:
         default_factory=dict, init=False, repr=False
     )
     _loss_history: list[float] = field(default_factory=list, init=False, repr=False)
+    _needs_parameter_snapshot: bool = field(default=False, init=False, repr=False)
+    _loss_history_window: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.checkpoint_every <= 0 or self.metadata_every <= 0:
             raise ValueError("checkpoint_every and metadata_every must be positive")
         if self.fingerprint_samples <= 0:
             raise ValueError("fingerprint_samples must be positive")
+        self._needs_parameter_snapshot = any(
+            "previous_parameters" in assertion.requires for assertion in self.contracts
+        )
+        self._loss_history_window = max(
+            (assertion.loss_history_window for assertion in self.contracts), default=0
+        )
         identifier = self.run_id or _run_id()
         self.run_id = identifier
         self.run_path = Path(self.root) / identifier
@@ -75,7 +83,8 @@ class Recorder:
             "determinism_limitations": determinism_limitations(environment),
         }
         atomic_write_json(self.run_path / "manifest.json", manifest)
-        self._previous_parameters = _parameter_snapshot(self.model)
+        if self._needs_parameter_snapshot:
+            self._previous_parameters = _parameter_snapshot(self.model)
         self._save_full_checkpoint(0)
         return self
 
@@ -139,9 +148,11 @@ class Recorder:
             atomic_torch_save(self.run_path / "rng" / f"step-{selected_step:08d}.pt", rng)
         if selected_step % self.checkpoint_every == 0:
             self._save_full_checkpoint(selected_step)
-        self._previous_parameters = _parameter_snapshot(self.model)
-        if scalar_loss is not None:
+        if self._needs_parameter_snapshot:
+            self._previous_parameters = _parameter_snapshot(self.model)
+        if scalar_loss is not None and self._loss_history_window:
             self._loss_history.append(scalar_loss)
+            del self._loss_history[: -self._loss_history_window]
         return metadata_path
 
     def _save_full_checkpoint(self, step: int) -> None:

@@ -39,6 +39,8 @@ def loss_not_exploding(
         category="TRAINING_DIVERGENCE",
         message="Current loss exceeds the configured prior-window ratio.",
         raise_on_failure=raise_on_failure,
+        requires=frozenset({"loss_history"}),
+        loss_history_window=window,
         evidence_factory=lambda context: {
             "observed_ratio": ratio(context),
             "max_ratio": max_ratio,

@@ -54,6 +54,8 @@ class Contract:
     evidence_factory: EvidenceFactory | None = None
     raise_on_failure: bool = False
     artifact_callback: ArtifactCallback | None = None
+    requires: frozenset[str] = frozenset()
+    loss_history_window: int = 0
 
     def evaluate(self, context: ContractContext) -> NablaIssue | None:
         """Evaluate, emit, optionally persist, and optionally raise a violation."""

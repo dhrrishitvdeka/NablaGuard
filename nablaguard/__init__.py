@@ -7,7 +7,7 @@ from .check.properties import Property, equivalent, property
 from .check.specs import ShapeStrategy, TensorSpec, TensorStrategy, shapes, tensor
 from .contracts.base import Contract, ContractContext, ContractViolation, contract
 from .core import NablaConfig, NablaIssue, Session, Severity, TensorEvent
-from .replay.runner import ReplayResult, replay
+from .replay.runner import ReplayObservation, ReplayResult, replay
 from .sanitize import Guard, guard, sanitize, shadow_rule
 
 __version__ = "1.0.0"
@@ -23,6 +23,7 @@ __all__ = [
     "NablaIssue",
     "Property",
     "Recorder",
+    "ReplayObservation",
     "ReplayResult",
     "Session",
     "ShapeStrategy",

@@ -45,6 +45,7 @@ def change(
         category="PARAMETER_CHANGE_CONTRACT",
         message="Relative parameter change is outside the configured interval.",
         raise_on_failure=raise_on_failure,
+        requires=frozenset({"previous_parameters"}),
         evidence_factory=lambda context: {
             "observed_max_relative_change": observed(context),
             "min_relative": min_relative,

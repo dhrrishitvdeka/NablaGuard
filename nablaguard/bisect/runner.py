@@ -13,7 +13,12 @@ import torch
 
 from nablaguard.core import NablaIssue, Severity
 from nablaguard.core.session import emit_issue
-from nablaguard.replay import ReplayResult, replay
+from nablaguard.replay import (
+    ReplayResult,
+    nearest_checkpoint,
+    replay,
+    restore_checkpoint,
+)
 
 from .diagnosis import BoundaryDiagnosis, diagnose_boundary
 from .search import first_bad
@@ -168,6 +173,13 @@ def bisect(
         model = model_factory()
         optimizer = optimizer_factory(model) if optimizer_factory is not None else None
         last_tensors: Mapping[str, torch.Tensor] | None = None
+        checkpoint_step, checkpoint_path = nearest_checkpoint(run_path, step)
+        if checkpoint_step == step:
+            restore_checkpoint(checkpoint_path, model=model, optimizer=optimizer)
+            costs[step] = (checkpoint_step, 0)
+            state = BoundaryState(step, metadata, None, model, optimizer, None)
+            states[step] = state
+            return state
 
         def invoke(
             current_step: int, current_metadata: dict[str, Any]

@@ -20,7 +20,20 @@ from .restore import nearest_checkpoint, restore_checkpoint
 from .validator import FingerprintMismatch, validate_fingerprints
 
 ReplayStatus = Literal["MATCH", "DIVERGENCE", "UNVERIFIED", "ERROR"]
-StepFunction = Callable[[int, dict[str, Any]], Mapping[str, torch.Tensor] | None]
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayObservation:
+    """Replay outputs plus optional data and batch identity evidence."""
+
+    tensors: Mapping[str, torch.Tensor] | None = None
+    data_state: Mapping[str, Any] | None = None
+    batch_indices: tuple[int, ...] | None = None
+
+
+StepFunction = Callable[
+    [int, dict[str, Any]], Mapping[str, torch.Tensor] | ReplayObservation | None
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +45,8 @@ class ReplayStepResult:
     warmup: bool
     mismatches: tuple[FingerprintMismatch, ...] = ()
     rng_matches: bool | None = None
+    data_state_matches: bool | None = None
+    batch_identity_matches: bool | None = None
     error: str | None = None
 
 
@@ -58,9 +73,9 @@ class ReplayResult:
 
     @property
     def passed(self) -> bool:
-        """Whether every verified step matched and no execution error occurred."""
+        """Whether every requested step produced verified matching evidence."""
 
-        return self.first_divergence is None
+        return bool(self.steps) and all(value.status == "MATCH" for value in self.steps)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe report."""
@@ -155,7 +170,8 @@ def replay(
     for step in expected_sequence:
         metadata = _load_step(run_path, step)
         try:
-            observed = step_fn(step, metadata)
+            raw_observed = step_fn(step, metadata)
+            observed = _normalize_observation(raw_observed)
         except Exception as error:
             issue = NablaIssue(
                 code="NG4002",
@@ -175,32 +191,92 @@ def replay(
             break
         current_rng_digest = rng_digest()
         rng_matches = current_rng_digest == metadata.get("rng_digest")
-        if observed is None:
+        data_state_matches = _optional_state_match(
+            metadata.get("data_state", {}), observed.data_state
+        )
+        batch_identity_matches = _optional_batch_match(
+            metadata.get("batch_indices"), observed.batch_indices
+        )
+        if observed.tensors is None:
             status: ReplayStatus = "UNVERIFIED"
             mismatches: tuple[FingerprintMismatch, ...] = ()
         else:
             mismatches = validate_fingerprints(
                 metadata.get("fingerprints", {}),
-                dict(observed),
+                dict(observed.tensors),
                 max_samples=sample_count,
             )
             status = "MATCH" if not mismatches and rng_matches else "DIVERGENCE"
-        if not rng_matches and observed is None:
+        if not rng_matches and observed.tensors is None:
             status = "DIVERGENCE"
-        result = ReplayStepResult(step, status, step <= from_step, mismatches, rng_matches)
+        if data_state_matches is False or batch_identity_matches is False:
+            status = "DIVERGENCE"
+        result = ReplayStepResult(
+            step,
+            status,
+            step <= from_step,
+            mismatches,
+            rng_matches,
+            data_state_matches,
+            batch_identity_matches,
+        )
         step_results.append(result)
         if status == "DIVERGENCE":
             first = mismatches[0] if mismatches else None
+            data_mismatch = data_state_matches is False or batch_identity_matches is False
+            captured_data_state = metadata.get("data_state", {})
+            dataset_id = (
+                captured_data_state.get("dataset_id")
+                if isinstance(captured_data_state, dict)
+                else None
+            )
             issues.append(
                 NablaIssue(
                     code="NG4002",
-                    category="UNREPRODUCIBLE_STATE",
+                    category=(
+                        "DATALOADER_STATE_MISMATCH"
+                        if data_mismatch
+                        else "UNREPRODUCIBLE_STATE"
+                    ),
                     severity=Severity.HIGH,
-                    message="Replay diverged from captured state.",
+                    message=(
+                        "Replay data or batch identity differs from captured state."
+                        if data_mismatch
+                        else "Replay diverged from captured state."
+                    ),
+                    module_path=str(dataset_id) if dataset_id is not None else None,
+                    operation="replay",
                     evidence={
                         "step": step,
-                        "first_mismatch": first.name if first else "rng",
+                        "first_mismatch": (
+                            first.name
+                            if first
+                            else "data_state"
+                            if data_state_matches is False
+                            else "batch_identity"
+                            if batch_identity_matches is False
+                            else "rng"
+                        ),
                         "rng_matches": rng_matches,
+                        "data_state_matches": data_state_matches,
+                        "batch_identity_matches": batch_identity_matches,
+                    },
+                )
+            )
+            if stop_on_divergence:
+                break
+        elif status == "UNVERIFIED":
+            issues.append(
+                NablaIssue(
+                    code="NG4002",
+                    category="REPLAY_UNVERIFIED",
+                    severity=Severity.HIGH,
+                    message="Replay step returned no tensor evidence to verify.",
+                    evidence={
+                        "step": step,
+                        "rng_matches": rng_matches,
+                        "data_state_matches": data_state_matches,
+                        "batch_identity_matches": batch_identity_matches,
                     },
                 )
             )
@@ -220,6 +296,37 @@ def replay(
         environment_mismatches=environment_mismatches,
         elapsed_seconds=time.perf_counter() - started,
     )
+
+
+def _normalize_observation(
+    value: Mapping[str, torch.Tensor] | ReplayObservation | None,
+) -> ReplayObservation:
+    if value is None:
+        return ReplayObservation()
+    if isinstance(value, ReplayObservation):
+        return value
+    return ReplayObservation(tensors=value)
+
+
+def _optional_state_match(
+    expected: Any, observed: Mapping[str, Any] | None
+) -> bool | None:
+    if observed is None:
+        return None
+    try:
+        expected_json = json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        observed_json = json.dumps(
+            dict(observed), sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+    except (TypeError, ValueError) as error:
+        raise TypeError("replay data_state must contain strict JSON values") from error
+    return observed_json == expected_json
+
+
+def _optional_batch_match(expected: Any, observed: tuple[int, ...] | None) -> bool | None:
+    if observed is None:
+        return None
+    return bool(list(observed) == expected)
 
 
 def _metadata_steps(run_path: Path) -> set[int]:

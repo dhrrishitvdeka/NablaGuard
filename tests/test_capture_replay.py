@@ -184,3 +184,71 @@ def test_recorder_rejects_non_monotonic_steps(tmp_path: Path) -> None:
         recorder.record_step(step=2)
         with pytest.raises(ValueError, match="strictly increasing"):
             recorder.record_step(step=1)
+
+
+def test_capture_does_not_clone_parameters_without_change_contract(tmp_path: Path) -> None:
+    model = torch.nn.Linear(4, 4)
+
+    with ng.capture(model, root=tmp_path, run_id="no-parameter-copies") as recorder:
+        assert recorder._previous_parameters == {}
+        recorder.record_step(step=1)
+        assert recorder._previous_parameters == {}
+
+
+def test_capture_bounds_loss_history_to_contract_window(tmp_path: Path) -> None:
+    model = torch.nn.Identity()
+    contract = ng.contracts.training.loss_not_exploding(window=3)
+
+    with ng.capture(
+        model,
+        root=tmp_path,
+        run_id="bounded-loss-history",
+        contracts=[contract],
+    ) as recorder:
+        for step in range(1, 8):
+            recorder.record_step(step=step, loss=float(step))
+
+    assert recorder._loss_history == [5.0, 6.0, 7.0]
+
+
+def test_replay_without_tensor_evidence_is_not_a_pass(tmp_path: Path) -> None:
+    model = torch.nn.Identity()
+    with ng.capture(model, root=tmp_path, run_id="unverified") as recorder:
+        recorder.record_step(step=1)
+
+    result = ng.replay(
+        recorder.run_path,
+        model=torch.nn.Identity(),
+        step_fn=lambda step, metadata: None,
+        to_step=1,
+    )
+
+    assert not result.passed
+    assert result.steps[0].status == "UNVERIFIED"
+    assert result.issues[0].category == "REPLAY_UNVERIFIED"
+
+
+def test_replay_detects_data_state_and_batch_identity_mismatch(tmp_path: Path) -> None:
+    model = torch.nn.Identity()
+    with ng.capture(model, root=tmp_path, run_id="data-state") as recorder:
+        recorder.record_step(
+            step=1,
+            data_state={"dataset_id": "train", "row": 17},
+            batch_indices=[17],
+        )
+
+    result = ng.replay(
+        recorder.run_path,
+        model=torch.nn.Identity(),
+        step_fn=lambda step, metadata: ng.ReplayObservation(
+            tensors={},
+            data_state={"dataset_id": "train", "row": 18},
+            batch_indices=(18,),
+        ),
+        to_step=1,
+    )
+
+    assert not result.passed
+    assert result.steps[0].data_state_matches is False
+    assert result.steps[0].batch_identity_matches is False
+    assert result.issues[0].category == "DATALOADER_STATE_MISMATCH"
