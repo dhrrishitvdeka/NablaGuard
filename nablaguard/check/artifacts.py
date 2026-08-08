@@ -17,6 +17,7 @@ def write_failure_artifact(
     *,
     metadata: dict[str, Any],
     inputs: Sequence[torch.Tensor],
+    minimized_inputs: Sequence[torch.Tensor] | None = None,
 ) -> Path:
     """Persist a failed experiment and return its content-addressed directory."""
 
@@ -28,6 +29,11 @@ def write_failure_artifact(
         json.dumps(metadata, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
     )
     torch.save([value.detach().cpu() for value in inputs], destination / "inputs.pt")
+    if minimized_inputs is not None:
+        torch.save(
+            [value.detach().cpu() for value in minimized_inputs],
+            destination / "minimized_inputs.pt",
+        )
     environment = {
         "python": platform.python_version(),
         "platform": platform.platform(),

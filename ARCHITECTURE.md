@@ -45,3 +45,21 @@ reported module is the first observed boundary, not necessarily the originating
 operator. Torch dispatch experiments are deferred until their eager, compiled,
 and overhead behavior is measured.
 
+## Diffcheck search and shrinking
+
+`TensorStrategy` resolves through a private Python RNG into concrete
+`TensorSpec` recipes. Tensor values use per-input private `torch.Generator`
+instances. Recipes cover boundary-heavy shapes, floating dtypes, value
+distributions, and contiguous, transposed, sliced, strided, or broadcasted
+layouts. Candidate and reference receive independent stride-preserving leaves.
+
+The reference defines whether a generated domain is valid: if it rejects a
+case, that trial is skipped. If the reference accepts it and the candidate
+raises or mismatches, the trial fails. Properties may add reference-free
+invariants to the same trial.
+
+Shrinking is bounded and greedy. It tries dimension removal, landmark dimension
+sizes, contiguous layout, simpler value distributions, and simpler dtypes. A
+candidate is accepted only after the original failure predicate reproduces.
+The output is therefore the smallest case found, not a mathematical proof of
+minimality.

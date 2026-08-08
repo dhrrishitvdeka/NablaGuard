@@ -4,8 +4,8 @@ Debug the math, not just the code.
 
 NablaGuard is a PyTorch-first toolkit for numerical verification, gradient
 analysis, differentiable operator testing, deterministic training replay, and
-failure bisection. Version 0.1 deliberately implements the verification
-foundation—not the later replay and bisection roadmap.
+failure bisection. Version 0.2 implements the verification foundation and
+tensor-aware diffcheck; replay and bisection remain later roadmap work.
 
 ## Catch a broken backward
 
@@ -93,3 +93,42 @@ where ordinary PyTorch autograd works, but this release makes no claim of full
 CUDA, `torch.compile`, distributed, Triton, replay, or bisection compatibility.
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md).
 
+## Fuzz and minimize an operator
+
+```python
+strategy = ng.tensor(
+    shape=ng.shapes(ranks=(1, 2, 3), dimensions=(7, 8, 16, 17, 32)),
+    dtype=[torch.float64, torch.float32, torch.float16],
+    distribution=["normal", "tiny", "huge", "mixed_magnitude"],
+    layout=["contiguous", "transposed", "strided", "broadcasted"],
+)
+
+result = ng.check.fuzz(
+    candidate=my_operator,
+    reference=reference_operator,
+    inputs=[strategy],
+    trials=100,
+    seed=81927183,
+    artifact_dir=".nabla/failures",
+)
+result.print()
+```
+
+Every failing case records its trial seed and concrete recipes. The shrinker
+re-executes each proposed shape, dtype, layout, or distribution simplification;
+it calls the result “minimal known,” because a bounded greedy search cannot
+prove global minimality.
+
+Reference-free properties can return a boolean or an `(actual, expected)` pair:
+
+```python
+@ng.property
+def softmax_translation_invariance(x):
+    return ng.equivalent(torch.softmax(x + 3, -1), torch.softmax(x, -1))
+```
+
+Importable callables can be checked in CI with meaningful exit codes:
+
+```bash
+nabla check package.ops:my_op --reference torch:sin --shape 32 --trials 100
+```

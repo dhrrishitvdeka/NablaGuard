@@ -28,6 +28,7 @@ def operator(
     relative_tolerance: float = 1e-5,
     check_backward: bool = True,
     artifact_dir: str | Path | None = None,
+    _emit_issues: bool = True,
 ) -> OperatorCheckResult:
     """Compare a candidate operator with a trusted PyTorch reference.
 
@@ -62,8 +63,9 @@ def operator(
         )
 
     issues = _issues_from_comparisons(forward, backward)
-    for issue in issues:
-        emit_issue(issue)
+    if _emit_issues:
+        for issue in issues:
+            emit_issue(issue)
 
     result = OperatorCheckResult(
         candidate_name=_callable_name(candidate),
@@ -78,6 +80,7 @@ def operator(
             "relative_tolerance": relative_tolerance,
             "input_shapes": [list(value.shape) for value in originals],
             "input_dtypes": [str(value.dtype) for value in originals],
+            "input_strides": [list(value.stride()) for value in originals],
         },
     )
     if not result.passed and artifact_dir is not None:
@@ -98,7 +101,20 @@ def _materialize(value: TensorSpec | torch.Tensor, seed: int) -> torch.Tensor:
 
 
 def _leaf_copy(value: torch.Tensor) -> torch.Tensor:
-    copy = value.detach().clone()
+    detached = value.detach()
+    if any(
+        stride == 0 and size > 1 for stride, size in zip(value.stride(), value.shape, strict=True)
+    ):
+        base = detached
+        for dimension, (stride, size) in enumerate(zip(value.stride(), value.shape, strict=True)):
+            if stride == 0 and size > 1:
+                base = base.narrow(dimension, 0, 1)
+        copy = base.clone(memory_format=torch.preserve_format).expand(value.shape)
+    else:
+        copy = torch.empty_strided(
+            value.shape, value.stride(), dtype=value.dtype, device=value.device
+        )
+        copy.copy_(detached)
     if copy.is_floating_point() or copy.is_complex():
         copy.requires_grad_(True)
     return copy
