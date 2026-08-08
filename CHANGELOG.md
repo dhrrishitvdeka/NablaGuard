@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.9.0 — Unreleased
+## 1.0.0 — 2026-08-09
+
+- Declared the documented top-level API and issue/report schemas stable.
+- Shipped operator diffcheck and minimization, eager numerical sanitizing,
+  precision auditing, capture/replay, bisection, and gradient tracing together.
+- Added runtime training contracts and console, JSON, HTML, JUnit, and diff reports.
+- Completed the seven-command CLI, GitHub Actions evidence artifacts, controlled
+  regression fixtures, benchmark suite, performance baseline, and math guide.
+- Validated on Python 3.12 and PyTorch 2.13 CPU with 99 tests and 88% coverage;
+  CUDA remains hardware-conditional and was unavailable for this release run.
+
+## 0.9.0
 
 - Added custom and built-in training contracts integrated with guards and capture.
 - Added JSON, self-contained HTML, JUnit XML, and structured report diff support.

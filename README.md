@@ -1,6 +1,14 @@
-# NablaGuard
+<div align="center">
+  <img src="docs/assets/nablaguard-hero.svg" alt="NablaGuard — Debug the math, not just the code" width="100%">
+  <br>
+  <a href="https://github.com/dhrrishitvdeka/NablaGuard/actions/workflows/ci.yml"><img src="https://github.com/dhrrishitvdeka/NablaGuard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/version-1.0.0-6366f1" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/python-3.10%2B-3776ab" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/PyTorch-2.2%2B-ee4c2c" alt="PyTorch 2.2+">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e" alt="MIT license"></a>
+</div>
 
-**Debug the math, not just the code.**
+## Debug the math, not just the code
 
 NablaGuard is a PyTorch-first toolkit for checking differentiable operators,
 finding numerical instability, explaining gradient geometry, capturing and
@@ -8,9 +16,13 @@ replaying training state, and bisecting the first bad step. Its diagnostics are
 computed algorithmically and carry stable issue codes, evidence, and explicit
 limitations.
 
-This repository is a **0.9 release candidate**. CPU eager execution is the
-supported baseline. Version 1.0 is intentionally reserved until independent
-real-world compatibility testing is complete.
+Version 1.0 provides a stable public API and a tested CPU-eager baseline.
+Hardware-conditional and external-project scope is stated explicitly rather
+than implied by the version number.
+
+| Verify | Observe | Reproduce | Explain |
+|:--|:--|:--|:--|
+| Forward, VJP, JVP, higher-order and finite-difference checks | Eager numerical sanitizer and precision shadows | Layered capture, deterministic replay and first-bad bisection | Loss and per-sample gradient geometry |
 
 ## Install
 

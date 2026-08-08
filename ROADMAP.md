@@ -61,9 +61,16 @@ complete CLI command surface and CI exit codes; controlled broken-model
 regressions; unified benchmark matrix; measured cost documentation; mathematical
 guides; stable pre-1.0 public exports.
 
-## 1.0 — External validation gate
+## 1.0 — Stable foundation (implemented)
 
-The locally implementable roadmap is complete. Version 1.0 remains gated on
-published testing against independent real-world projects and broader hardware
-coverage. This is evidence work, not another feature milestone; the project
-will not substitute controlled fixtures for that claim.
+Stable public API and issue schemas; documented performance; strong controlled
+regression coverage; representative PyTorch training workloads; CI integration;
+and a reproducible benchmark suite. The supported guarantee is CPU eager, with
+compile-eager and hardware-conditional CUDA smoke coverage clearly separated.
+
+## After 1.0
+
+Expand the compatibility evidence across independent model repositories,
+accelerator generations, distributed runtimes, and custom-kernel ecosystems.
+Controlled fixtures remain regression evidence, not a population-wide accuracy
+claim.

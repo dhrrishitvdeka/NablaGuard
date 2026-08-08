@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">NablaGuard</title>
+  <desc id="desc">Debug the math, not just the code.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="1" stop-color="#172554"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset=".52" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#f472b6"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <g opacity=".16" stroke="#94a3b8">
+    <path d="M0 60H1200M0 120H1200M0 180H1200M0 240H1200M0 300H1200"/>
+    <path d="M100 0V360M200 0V360M300 0V360M400 0V360M500 0V360M600 0V360M700 0V360M800 0V360M900 0V360M1000 0V360M1100 0V360"/>
+  </g>
+  <path d="M64 264C128 262 143 194 206 196S285 282 352 244 418 92 490 108 559 253 630 230 696 155 758 166 827 244 890 210 963 103 1138 112" fill="none" stroke="url(#line)" stroke-width="5" filter="url(#glow)"/>
+  <circle cx="490" cy="108" r="8" fill="#818cf8"/><circle cx="890" cy="210" r="8" fill="#f472b6"/>
+  <g fill="#f8fafc" font-family="Inter,Segoe UI,Arial,sans-serif" text-anchor="middle">
+    <text x="600" y="150" font-size="78" font-weight="750" letter-spacing="8">∇ NABLAGUARD</text>
+    <text x="600" y="205" font-size="24" fill="#cbd5e1" letter-spacing="3">DEBUG THE MATH, NOT JUST THE CODE</text>
+  </g>
+  <g transform="translate(454 286)" font-family="ui-monospace,Consolas,monospace" font-size="15">
+    <rect width="292" height="38" rx="19" fill="#0f172a" stroke="#38bdf8"/>
+    <text x="146" y="24" fill="#7dd3fc" text-anchor="middle">VERIFY • TRACE • REPLAY • BISECT</text>
+  </g>
+</svg>
