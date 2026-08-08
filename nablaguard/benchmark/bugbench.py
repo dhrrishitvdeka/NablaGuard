@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import math
 import platform
 import statistics
 import time
@@ -546,7 +547,21 @@ def _classification(case: BugBenchCaseResult) -> str:
 def json_dumps(report: BugBenchReport) -> str:
     """Encode a report without coercing unsupported values to strings."""
 
-    return json.dumps(report.to_dict(), indent=2, sort_keys=True, allow_nan=False)
+    return json.dumps(
+        _normalize_nonfinite(report.to_dict()), indent=2, sort_keys=True, allow_nan=False
+    )
+
+
+def _normalize_nonfinite(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        if math.isnan(value):
+            return "NaN"
+        return "Infinity" if value > 0 else "-Infinity"
+    if isinstance(value, dict):
+        return {str(key): _normalize_nonfinite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_nonfinite(item) for item in value]
+    return value
 
 
 __all__ = [

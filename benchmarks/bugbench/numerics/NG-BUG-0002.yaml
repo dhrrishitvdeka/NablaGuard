@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0002",
+  "benchmark_category": "numerics",
+  "description": "Naive softmax overflows because it exponentiates unshifted logits.",
+  "implementation": "benchmarks.bugbench.cases:unstable_softmax",
+  "expected": {"detected": true, "category": "OVERFLOW_RISK", "module": "softmax", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float32"},
+  "tags": ["softmax", "overflow", "stability"]
+}

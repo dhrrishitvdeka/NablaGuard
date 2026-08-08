@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0003",
+  "benchmark_category": "numerics",
+  "description": "A reduction loses nearly all component magnitude through cancellation.",
+  "implementation": "benchmarks.bugbench.cases:catastrophic_cancellation",
+  "expected": {"detected": true, "category": "NUMERICAL_CANCELLATION", "module": "reduction", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["cancellation", "reduction"]
+}

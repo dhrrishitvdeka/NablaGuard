@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0104",
+  "benchmark_category": "autograd",
+  "description": "Broadcast bias backward fails to reduce over the broadcast dimension.",
+  "implementation": "benchmarks.bugbench.cases:incorrect_broadcast_gradient",
+  "expected": {"detected": true, "category": "BACKWARD_MISMATCH", "module": "benchmarks.bugbench.cases._WrongBroadcastGradient.apply", "stage": "backward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["broadcast", "vjp", "wrong-backward"]
+}

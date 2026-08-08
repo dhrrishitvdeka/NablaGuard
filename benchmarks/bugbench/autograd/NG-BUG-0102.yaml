@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0102",
+  "benchmark_category": "autograd",
+  "description": "Custom backward silently returns no input gradient.",
+  "implementation": "benchmarks.bugbench.cases:missing_gradient",
+  "expected": {"detected": true, "category": "MISSING_GRADIENT", "module": "benchmarks.bugbench.cases._MissingGradient.apply", "stage": "backward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["missing-gradient", "autograd-function"]
+}

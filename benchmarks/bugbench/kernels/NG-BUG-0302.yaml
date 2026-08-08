@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0302",
+  "benchmark_category": "kernels",
+  "description": "A boundary mask drops the final element at sizes 17 and above.",
+  "implementation": "benchmarks.bugbench.cases:wrong_boundary_mask",
+  "expected": {"detected": true, "category": "FORWARD_MISMATCH", "module": "benchmarks.bugbench.cases.wrong_boundary_mask.<locals>.masked_copy_kernel", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["mask", "boundary", "shrinking", "power-of-two-plus-one"]
+}

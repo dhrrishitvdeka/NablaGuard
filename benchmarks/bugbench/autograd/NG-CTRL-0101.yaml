@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-CTRL-0101",
+  "benchmark_category": "autograd",
+  "description": "Correct square forward and backward negative control.",
+  "implementation": "benchmarks.bugbench.cases:correct_autograd_control",
+  "expected": {"detected": false, "category": null, "module": null, "stage": null},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["control", "autograd"]
+}

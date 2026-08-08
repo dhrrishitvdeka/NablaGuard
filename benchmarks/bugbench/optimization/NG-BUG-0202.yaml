@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0202",
+  "benchmark_category": "optimization",
+  "description": "Two named losses generate nearly opposing parameter gradients.",
+  "implementation": "benchmarks.bugbench.cases:gradient_cancellation",
+  "expected": {"detected": true, "category": "GRADIENT_CANCELLATION", "module": "classifier.weight", "stage": "backward"},
+  "requirements": {"device": "cpu", "dtype": "float32"},
+  "tags": ["multi-loss", "gradient-cancellation"]
+}

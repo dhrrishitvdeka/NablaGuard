@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0301",
+  "benchmark_category": "kernels",
+  "description": "A simulated kernel reads a transposed tensor using contiguous strides.",
+  "implementation": "benchmarks.bugbench.cases:stride_sensitive_kernel",
+  "expected": {"detected": true, "category": "FORWARD_MISMATCH", "module": "benchmarks.bugbench.cases.stride_sensitive_kernel.<locals>.stride_kernel", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float64", "layout": "transposed"},
+  "tags": ["stride", "non-contiguous", "kernel"]
+}

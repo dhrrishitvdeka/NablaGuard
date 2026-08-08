@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0401",
+  "benchmark_category": "precision",
+  "description": "BF16 input quantization destroys a unit residual in a high-dynamic-range reduction.",
+  "implementation": "benchmarks.bugbench.cases:bf16_precision_degradation",
+  "expected": {"detected": true, "category": "PRECISION_BUDGET_EXCEEDED", "module": "reduction", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "bfloat16"},
+  "tags": ["bfloat16", "precision", "error-budget"]
+}

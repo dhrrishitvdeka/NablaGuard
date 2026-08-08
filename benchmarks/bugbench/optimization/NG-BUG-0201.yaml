@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0201",
+  "benchmark_category": "optimization",
+  "description": "Selected parameter gradient norm exceeds its training contract.",
+  "implementation": "benchmarks.bugbench.cases:gradient_explosion",
+  "expected": {"detected": true, "category": "GRADIENT_NORM_CONTRACT", "module": "linear.weight", "stage": "backward"},
+  "requirements": {"device": "cpu", "dtype": "float32"},
+  "tags": ["gradient-explosion", "contract"]
+}

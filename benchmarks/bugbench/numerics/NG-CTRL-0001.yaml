@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-CTRL-0001",
+  "benchmark_category": "numerics",
+  "description": "Stable log-sum-exp negative control.",
+  "implementation": "benchmarks.bugbench.cases:stable_numerics_control",
+  "expected": {"detected": false, "category": null, "module": null, "stage": null},
+  "requirements": {"device": "cpu", "dtype": "float32"},
+  "tags": ["control", "logsumexp"]
+}

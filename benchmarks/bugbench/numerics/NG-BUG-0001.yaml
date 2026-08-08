@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0001",
+  "benchmark_category": "numerics",
+  "description": "FP16 exponential overflow before the final output is consumed.",
+  "implementation": "benchmarks.bugbench.cases:fp16_overflow",
+  "expected": {"detected": true, "category": "OVERFLOW_RISK", "module": "unstable_exp", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float16"},
+  "tags": ["fp16", "overflow", "exp"]
+}

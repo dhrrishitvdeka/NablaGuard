@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0101",
+  "benchmark_category": "autograd",
+  "description": "Custom square backward returns x instead of 2x.",
+  "implementation": "benchmarks.bugbench.cases:incorrect_custom_backward",
+  "expected": {"detected": true, "category": "BACKWARD_MISMATCH", "module": "benchmarks.bugbench.cases._WrongSquare.apply", "stage": "backward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["autograd-function", "vjp", "wrong-backward"]
+}

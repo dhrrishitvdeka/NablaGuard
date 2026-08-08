@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0701",
+  "benchmark_category": "data",
+  "description": "Iterable dataset progress is not restored and replay begins at a different row.",
+  "implementation": "benchmarks.bugbench.cases:dataloader_state_mismatch",
+  "expected": {"detected": true, "category": "DATALOADER_STATE_MISMATCH", "module": "StatefulDataset", "stage": "replay"},
+  "requirements": {"device": "cpu", "workers": 0},
+  "tags": ["dataloader", "state", "replay"]
+}

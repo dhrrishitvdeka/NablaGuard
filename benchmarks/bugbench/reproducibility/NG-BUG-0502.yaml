@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0502",
+  "benchmark_category": "reproducibility",
+  "description": "Operator reseeds the global torch RNG and cannot be replayed from the captured state.",
+  "implementation": "benchmarks.bugbench.cases:missing_rng_restoration",
+  "expected": {"detected": true, "category": "NONDETERMINISTIC_OPERATOR", "module": "benchmarks.bugbench.cases.missing_rng_restoration.<locals>.corrupting_random_op", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["rng", "determinism", "replay"]
+}

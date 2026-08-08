@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0601",
+  "benchmark_category": "distributed",
+  "description": "One rank diverges before a collective operation.",
+  "implementation": "benchmarks.bugbench.cases:distributed_rank_divergence",
+  "expected": {"detected": true, "category": "DISTRIBUTED_DIVERGENCE", "module": "rank.1", "stage": "pre_collective"},
+  "requirements": {"world_size": 2, "backend": "gloo"},
+  "tags": ["distributed", "rank-divergence", "coverage-gap"]
+}

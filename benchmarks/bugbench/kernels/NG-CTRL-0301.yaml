@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-CTRL-0301",
+  "benchmark_category": "kernels",
+  "description": "Correct clone kernel negative control.",
+  "implementation": "benchmarks.bugbench.cases:contiguous_kernel_control",
+  "expected": {"detected": false, "category": null, "module": null, "stage": null},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["control", "kernel"]
+}

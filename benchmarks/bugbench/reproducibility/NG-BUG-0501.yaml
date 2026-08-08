@@ -1,0 +1,10 @@
+{
+  "schema": {"name": "nablaguard.bugbench.case", "version": 1},
+  "id": "NG-BUG-0501",
+  "benchmark_category": "reproducibility",
+  "description": "Operator output changes through hidden mutable state.",
+  "implementation": "benchmarks.bugbench.cases:nondeterministic_operator",
+  "expected": {"detected": true, "category": "NONDETERMINISTIC_OPERATOR", "module": "benchmarks.bugbench.cases.nondeterministic_operator.<locals>.stateful", "stage": "forward"},
+  "requirements": {"device": "cpu", "dtype": "float64"},
+  "tags": ["determinism", "hidden-state"]
+}
