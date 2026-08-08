@@ -15,8 +15,14 @@ from typing import Any, cast
 import torch
 
 from nablaguard import __version__
-from nablaguard.benchmark import BugBenchConfigError, run_bugbench
+from nablaguard.benchmark import (
+    BugBenchConfigError,
+    OverheadConfigError,
+    run_bugbench,
+    run_overhead_benchmark,
+)
 from nablaguard.benchmark.bugbench import json_dumps as bugbench_json
+from nablaguard.benchmark.overhead import json_dumps as overhead_json
 from nablaguard.bisect import bisect as bisect_run
 from nablaguard.bisect import metric_greater_than, metric_less_than, metric_nonfinite
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
@@ -105,6 +111,14 @@ def build_parser() -> argparse.ArgumentParser:
     bugbench_parser.add_argument("--category", action="append", dest="categories")
     bugbench_parser.add_argument("--format", choices=("console", "json"), default="console")
     bugbench_parser.add_argument("--output", type=Path)
+    overhead_parser = benchmark_suites.add_parser(
+        "overhead", help="measure guard-mode overhead on representative workloads"
+    )
+    overhead_parser.add_argument("--quick", action="store_true")
+    overhead_parser.add_argument("--device")
+    overhead_parser.add_argument("--workload", action="append", dest="workloads")
+    overhead_parser.add_argument("--format", choices=("console", "json"), default="console")
+    overhead_parser.add_argument("--output", type=Path)
     return parser
 
 
@@ -255,6 +269,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             arguments.output.parent.mkdir(parents=True, exist_ok=True)
             arguments.output.write_text(rendered + "\n", encoding="utf-8")
         return benchmark_result.exit_code
+    if arguments.command == "benchmark" and arguments.benchmark_suite == "overhead":
+        try:
+            overhead_result = run_overhead_benchmark(
+                quick=arguments.quick,
+                device=arguments.device,
+                workloads=arguments.workloads,
+            )
+        except OverheadConfigError as error:
+            print(f"Invalid overhead benchmark configuration: {error}", file=sys.stderr)
+            return 3
+        rendered = (
+            overhead_json(overhead_result)
+            if arguments.format == "json"
+            else overhead_result.format()
+        )
+        if arguments.output is None:
+            print(rendered)
+        else:
+            arguments.output.parent.mkdir(parents=True, exist_ok=True)
+            arguments.output.write_text(rendered + "\n", encoding="utf-8")
+        return 0
     parser.print_help()
     return 0
 

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 from nablaguard.benchmark import BugBenchObservation, CaseContext, run_bugbench
+from nablaguard.benchmark.bugbench import json_dumps
+from nablaguard.benchmark.overhead import run_overhead_benchmark
 from nablaguard.cli.main import main
 
 
@@ -13,7 +15,7 @@ def detected_fixture(context: CaseContext) -> BugBenchObservation:
         category="BACKWARD_MISMATCH",
         module="custom_square",
         stage="backward",
-        evidence={"seed": context.seed},
+        evidence={"seed": context.seed, "infinite_error": float("inf")},
         baseline_seconds=1.0,
         instrumented_seconds=1.25,
         original_failure_size=64,
@@ -59,6 +61,9 @@ def test_bugbench_derives_metrics_from_ground_truth(tmp_path: Path) -> None:
     assert metrics["diagnostic_accuracy"] == 1.0
     assert metrics["runtime_overhead"]["median"] == 1.25
     assert metrics["failure_minimization_effectiveness"]["mean_reduction"] == 0.96875
+    encoded = json_dumps(report)
+    assert '"runtime_overhead"' in encoded
+    assert '"infinite_error": "Infinity"' in encoded
 
 
 def test_bugbench_cli_uses_ci_exit_taxonomy(tmp_path: Path, capsys) -> None:
@@ -68,6 +73,20 @@ def test_bugbench_cli_uses_ci_exit_taxonomy(tmp_path: Path, capsys) -> None:
 
     assert exit_code == 3
     assert "Invalid BugBench configuration" in capsys.readouterr().err
+
+
+def test_overhead_benchmark_measures_actual_guarded_model_path() -> None:
+    report = run_overhead_benchmark(
+        quick=True,
+        device="cpu",
+        workloads=["tiny_mlp"],
+        modes=["light"],
+    )
+
+    workload = report.workloads["tiny_mlp"]
+    assert workload["baseline"]["wall_seconds"] > 0
+    assert workload["light"]["wall_clock_ratio"] > 0
+    assert workload["light"]["python_heap_overhead_bytes"] >= 0
 
 
 def _write_case(

@@ -55,6 +55,7 @@ class Guard(Session):
     operations: tuple[str, ...] | None = None
     capture_source: bool = True
     contracts: tuple[Contract, ...] = ()
+    light_sample_elements: int = 1024
     _handles: list[Any] = field(default_factory=list, init=False, repr=False)
     _dispatch_mode: NumericalDispatchMode | None = field(default=None, init=False, repr=False)
     _analysis_depth: int = field(default=0, init=False, repr=False)
@@ -117,7 +118,12 @@ class Guard(Session):
     ) -> TensorEvent:
         self._analysis_depth += 1
         try:
-            statistics = compute_statistics(tensor)
+            statistics = compute_statistics(
+                tensor,
+                max_samples=(
+                    self.light_sample_elements if self.config.mode == "light" else None
+                ),
+            )
         finally:
             self._analysis_depth -= 1
         event = _event(
@@ -126,7 +132,12 @@ class Guard(Session):
             operation=operation,
             module_path=module_path,
             source_location=source_location,
-            tags=tags,
+            tags={
+                **(tags or {}),
+                "statistics_sampled": statistics.sampled_elements < statistics.total_elements,
+                "statistics_sampled_elements": statistics.sampled_elements,
+                "statistics_total_elements": statistics.total_elements,
+            },
         )
         self.emit_event(event)
         self._tensor_producers[id(tensor)] = event.event_id
@@ -338,6 +349,8 @@ class Guard(Session):
         assert self.model is not None
         for name, module in self.model.named_modules():
             path = name or "<root>"
+            if self.config.mode == "light" and self.modules is None and name:
+                continue
             if not self._selected(path):
                 continue
             self._handles.append(module.register_forward_pre_hook(self._pre_hook(path)))
@@ -383,6 +396,7 @@ def guard(
     max_events: int = 10_000,
     extreme_value_threshold: float | None = None,
     contracts: Iterable[Contract] = (),
+    light_sample_elements: int = 1024,
 ) -> Guard:
     """Create a bounded numerical monitoring context."""
 
@@ -392,6 +406,8 @@ def guard(
         raise ValueError("shadow error tolerances must be non-negative")
     if not 0 <= cancellation_threshold <= 1:
         raise ValueError("cancellation_threshold must be in [0, 1]")
+    if light_sample_elements <= 0:
+        raise ValueError("light_sample_elements must be positive")
     config = NablaConfig(
         mode=mode,
         max_events=max_events,
@@ -411,6 +427,7 @@ def guard(
         operations=tuple(operations) if operations is not None else None,
         capture_source=capture_source,
         contracts=tuple(contracts),
+        light_sample_elements=light_sample_elements,
     )
 
 
