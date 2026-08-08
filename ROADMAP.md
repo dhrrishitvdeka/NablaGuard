@@ -35,8 +35,13 @@ Monotonic first-bad binary search; metadata and checkpoint-aware replay probes;
 fresh-state factories; git-bisect-style history; trigger-batch and adjacent-step
 fingerprint diagnosis with observed/inferred/unknown labeling.
 
+## 0.6 — Advanced gradient trace (implemented)
+
+Selected-parameter and layer-glob per-sample VJPs; sample subsets; microbatch
+forwards; dominant, opposing, and duplicate-direction samples; exact cancellation;
+pre-allocation memory bounds and performance warnings.
+
 ## Later releases
 
-Per-sample gradient analysis (0.6) and kernel/JVP/higher-order verification
-(0.7). Version 1.0 requires a stable API, credible benchmarks, documented cost,
-and real-world compatibility evidence.
+Kernel/JVP/higher-order verification (0.7) remains. Version 1.0 requires a stable
+API, credible benchmarks, documented cost, and real-world compatibility evidence.

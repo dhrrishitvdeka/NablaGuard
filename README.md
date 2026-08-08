@@ -242,3 +242,27 @@ statistics at N−1 and N. Changes are labeled `OBSERVED`; causality remains
 ```bash
 nabla bisect .nabla/runs/run-id --metric loss --greater-than 10
 ```
+
+## Analyze individual sample gradients
+
+```python
+report = ng.trace.samples(
+    model,
+    loss_fn,
+    (inputs, targets),
+    layers=["layer4.*"],
+    sample_indices=[0, 4, 8, 12],
+    microbatch_size=4,
+    max_gradient_elements=5_000_000,
+)
+report.print()
+```
+
+The report ranks sample gradient magnitude share, cosine to the selected batch
+gradient, opposing samples, nearly duplicate directions, and exact cancellation
+`1 - ||Σgᵢ||₂ / Σ||gᵢ||₂`. It does not call norm share an additive contribution.
+
+Per-sample analysis performs one VJP per selected sample and retains one flattened
+gradient vector per selected sample. NablaGuard calculates this allocation before
+the first gradient and raises if it exceeds `max_gradient_elements`. Existing
+parameter gradients, module buffers, and RNG state are restored afterward.

@@ -101,6 +101,22 @@ and min/max/mean/std/norm fingerprint changes. It ranks relative scalar changes
 but labels each `OBSERVED`, not causal. Uncaptured gradient, activation,
 optimizer, data, and external state remain explicitly `UNKNOWN`.
 
+## Per-sample gradient geometry
+
+Per-sample tracing selects named parameters directly or through parameter-name
+globs. It calculates the exact storage requirement `samples × selected parameter
+elements` before allocating and refuses requests beyond `max_gradient_elements`.
+Microbatch forwards are shared when the loss function returns an unreduced
+leading batch dimension; scalar-reduced losses fall back to individual forwards
+and report that cost.
+
+Each scalar sample loss produces one `autograd.grad` VJP. Temporary vectors yield
+norm share, cosine to the summed batch gradient, exact cancellation, and bounded
+pairwise duplicate-direction checks. The final report stores scalar evidence only.
+RNG, buffers, and existing selected `.grad` values are restored in `finally`.
+Stochastic per-sample gradients are an analysis run and need not equal the draws
+that occurred in a separate training forward.
+
 ## Diffcheck search and shrinking
 
 `TensorStrategy` resolves through a private Python RNG into concrete

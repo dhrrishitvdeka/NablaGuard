@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.5.0 — Unreleased
+## 0.6.0 — Unreleased
+
+- Added bounded per-sample selected-parameter gradient analysis.
+- Added layer globs, sample subsets, and microbatch forwards.
+- Added dominant magnitude share, cosine-to-batch, conflicts, and duplicates.
+- Added exact per-sample cancellation with shared NG2003/NG2004 issues.
+- Added pre-allocation gradient-element limits and performance warnings.
+- Restored RNG, module buffers, and existing gradients after analysis.
+- Added per-sample example, benchmark, tests, and research documentation.
+
+## 0.5.0
 
 - Added generic monotonic first-bad-step binary search.
 - Added captured metadata and checkpoint-aware replay probe modes.
