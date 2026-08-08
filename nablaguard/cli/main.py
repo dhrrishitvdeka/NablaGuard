@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import runpy
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ import torch
 from nablaguard import __version__
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
 from nablaguard.check.specs import TensorSpec, TensorStrategy, shapes, tensor
+from nablaguard.sanitize import guard
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +41,15 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--trials", type=int, default=1)
     check_parser.add_argument("--seed", type=int, default=81927183)
     check_parser.add_argument("--artifact-dir", type=Path)
+    sanitize_parser = subcommands.add_parser(
+        "sanitize", help="run a Python script under numerical instrumentation"
+    )
+    sanitize_parser.add_argument("script", type=Path)
+    sanitize_parser.add_argument(
+        "--mode", choices=("light", "standard", "deep"), default="standard"
+    )
+    sanitize_parser.add_argument("--shadow", action="store_true")
+    sanitize_parser.add_argument("script_args", nargs=argparse.REMAINDER)
     return parser
 
 
@@ -84,6 +96,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         result.print()
         return 0 if result.passed else 1
+    if arguments.command == "sanitize":
+        if not arguments.script.is_file():
+            parser.error(f"script does not exist: {arguments.script}")
+        original_argv = sys.argv
+        sys.argv = [str(arguments.script), *arguments.script_args]
+        monitor = guard(mode=arguments.mode, shadow=arguments.shadow or None)
+        try:
+            with monitor:
+                runpy.run_path(str(arguments.script), run_name="__main__")
+        finally:
+            sys.argv = original_argv
+        monitor.print()
+        return 1 if monitor.issues else 0
     parser.print_help()
     return 0
 

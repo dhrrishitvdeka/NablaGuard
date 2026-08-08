@@ -9,6 +9,7 @@ from nablaguard.core import NablaIssue
 
 if TYPE_CHECKING:
     from nablaguard.check import Comparison, OperatorCheckResult
+    from nablaguard.core import Session
     from nablaguard.trace import GradientReport
 
 
@@ -53,6 +54,20 @@ def format_gradient_report(report: GradientReport) -> str:
         for pair in report.cosine_similarities:
             lines.append(f"  {pair.left} <-> {pair.right}: {pair.cosine:.6g}")
     for issue in report.issues:
+        lines.extend(["", *_format_issue(issue)])
+    return "\n".join(lines)
+
+
+def format_session(session: Session) -> str:
+    """Render issues and instrumentation cost for a shared session."""
+
+    lines = [
+        f"NablaGuard detected {len(session.issues)} problem(s).",
+        f"Captured tensor events: {len(session.events)}",
+    ]
+    if session.dropped_events:
+        lines.append(f"Dropped events at configured bound: {session.dropped_events}")
+    for issue in session.issues:
         lines.extend(["", *_format_issue(issue)])
     return "\n".join(lines)
 

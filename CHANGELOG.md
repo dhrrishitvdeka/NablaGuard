@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.3.0 — Unreleased
+
+- Added selective eager ATen instrumentation for sensitive numerical operations.
+- Added FP64 shadow execution with absolute, relative, finite-state, and ULP evidence.
+- Added mathematical exponential overflow, underflow, and sum-cancellation checks.
+- Added source locations, module context, and metadata-only propagation links.
+- Added bounded, experimental model precision auditing against an FP64 reference.
+- Added zero-modification `nabla sanitize` script execution and overhead benchmarks.
+
+## 0.2.0
 
 - Added bounded, boundary-heavy shape and tensor input strategies.
 - Added dtype, value-distribution, and non-contiguous layout generation.

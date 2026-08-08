@@ -39,11 +39,31 @@ is reported as `NaN`. Cancellation is
 
 ## Numerical sanitizer
 
-The initial sanitizer uses module forward hooks or explicit `observe` calls.
-Hooks see module outputs, not every internal ATen operation; therefore the first
-reported module is the first observed boundary, not necessarily the originating
-operator. Torch dispatch experiments are deferred until their eager, compiled,
-and overhead behavior is measured.
+The sanitizer combines module hooks, explicit `observe` calls, and a curated
+eager `TorchDispatchMode`. The mode sees selected sensitive ATen operations and
+records scalar output statistics, source positions, module context, and
+metadata-only upstream event IDs. Light mode disables dispatch. Standard mode
+instruments without shadow execution. Deep mode promotes floating operands and
+re-executes registered operations in FP64 by default.
+
+Shadow comparison reports absolute, relative, finite-state, and supported ULP
+errors. Pre-operation heuristics use mathematical dtype limits, such as
+`log(finfo.max)` for exponential overflow. Scalar sum cancellation uses
+`1 - abs(sum(x)) / sum(abs(x))`. Heuristics are labeled observations or risks,
+not root-cause claims.
+
+The dispatch mechanism uses a private PyTorch API and is officially eager-only.
+No correctness claim is made for `torch.compile`, distributed execution, or
+custom kernels until compatibility tests establish one.
+
+## Precision audit
+
+Precision auditing deep-copies the model for each user-ordered candidate dtype
+and compares selected module outputs with a copied FP64 reference. It recommends
+the first measured dtype satisfying both absolute and relative budgets. The
+capture has an element bound and reports skipped modules. Because a whole model
+runs at each dtype, a module's observed error can include upstream propagation;
+the result is empirical placement guidance, not an isolated kernel proof.
 
 ## Diffcheck search and shrinking
 

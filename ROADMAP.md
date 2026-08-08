@@ -15,10 +15,12 @@ Boundary-heavy shape, dtype, value-distribution, and layout generation;
 reference-aware property fuzzing; failure shrinking; seed persistence; CLI
 checks; minimized failure artifacts.
 
-## 0.3 — Numerical sanitizer
+## 0.3 — Numerical sanitizer (implemented)
 
-Evidence-backed dispatch experiments, selected high-precision shadow rules, and
-precision auditing against explicit error budgets.
+Evidence-backed eager dispatch instrumentation, selected high-precision shadow
+rules, mathematical overflow/underflow/cancellation checks, propagation metadata,
+zero-modification CLI execution, and bounded precision auditing against explicit
+error budgets.
 
 ## Later releases
 

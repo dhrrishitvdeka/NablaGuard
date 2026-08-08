@@ -4,8 +4,9 @@ Debug the math, not just the code.
 
 NablaGuard is a PyTorch-first toolkit for numerical verification, gradient
 analysis, differentiable operator testing, deterministic training replay, and
-failure bisection. Version 0.2 implements the verification foundation and
-tensor-aware diffcheck; replay and bisection remain later roadmap work.
+failure bisection. Version 0.3 implements the verification foundation,
+tensor-aware diffcheck, selective eager numerical instrumentation, and
+experimental precision auditing; replay and bisection remain later roadmap work.
 
 ## Catch a broken backward
 
@@ -77,6 +78,43 @@ deviation, absolute max, zero fraction, NaN count, and Inf count). It never
 retains module outputs. Magnitude warnings require an explicit threshold, which
 keeps model-specific heuristics out of the correctness engine.
 
+Deep mode re-executes only a curated registry of numerically sensitive ATen
+operations in higher precision:
+
+```python
+with ng.guard(
+    mode="deep",
+    shadow_dtype=torch.float64,
+    max_relative_error=1e-3,
+    operations=["aten.exp*", "aten.sum*", "aten._softmax*"],
+) as monitor:
+    loss = model(batch).sum()
+    loss.backward()
+
+monitor.print()
+```
+
+The dispatch engine can identify an FP16 `exp` input beyond `log(finfo.max)`
+before reporting its infinite output. Events carry metadata-only upstream IDs;
+full tensors are not retained. Standard/deep dispatch is officially eager-only.
+Light mode avoids dispatch interception.
+
+Precision recommendations are experiments against a copied float64 model, not
+static guesses:
+
+```python
+report = ng.precision.audit(
+    model,
+    sample_input,
+    candidate_dtypes=(torch.float16, torch.bfloat16, torch.float32),
+    max_relative_error=1e-4,
+)
+report.print()
+```
+
+The audit is bounded by `max_capture_elements`, leaves the original model
+unchanged, and does not automatically rewrite it.
+
 ## Install and develop
 
 ```bash
@@ -131,4 +169,5 @@ Importable callables can be checked in CI with meaningful exit codes:
 
 ```bash
 nabla check package.ops:my_op --reference torch:sin --shape 32 --trials 100
+nabla sanitize train.py --mode deep
 ```
