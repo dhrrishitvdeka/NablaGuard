@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--trials", type=int, default=1)
     check_parser.add_argument("--seed", type=int, default=81927183)
     check_parser.add_argument("--artifact-dir", type=Path)
+    check_parser.add_argument("--random-vjp", action="store_true")
+    check_parser.add_argument("--jvp", action="store_true")
+    check_parser.add_argument("--double-backward", action="store_true")
+    check_parser.add_argument("--finite-difference", action="store_true")
+    check_parser.add_argument("--determinism", action="store_true")
     sanitize_parser = subcommands.add_parser(
         "sanitize", help="run a Python script under numerical instrumentation"
     )
@@ -100,9 +105,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 reference=reference,
                 inputs=[TensorSpec(shape, dtype)],
                 seed=arguments.seed,
+                vjp_cotangent="random" if arguments.random_vjp else "ones",
+                check_jvp=arguments.jvp,
+                check_double_backward=arguments.double_backward,
+                check_finite_difference=arguments.finite_difference,
+                check_determinism=arguments.determinism,
                 artifact_dir=arguments.artifact_dir,
             )
         else:
+            if any(
+                (
+                    arguments.random_vjp,
+                    arguments.jvp,
+                    arguments.double_backward,
+                    arguments.finite_difference,
+                    arguments.determinism,
+                )
+            ):
+                parser.error("advanced derivative flags currently require --trials 1")
             strategy = tensor(
                 shape=shapes(shape),
                 dtype=[dtype],

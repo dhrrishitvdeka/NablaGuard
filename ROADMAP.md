@@ -41,7 +41,14 @@ Selected-parameter and layer-glob per-sample VJPs; sample subsets; microbatch
 forwards; dominant, opposing, and duplicate-direction samples; exact cancellation;
 pre-allocation memory bounds and performance warnings.
 
-## Later releases
+## 0.7 — Kernel engineering (implemented)
 
-Kernel/JVP/higher-order verification (0.7) remains. Version 1.0 requires a stable
-API, credible benchmarks, documented cost, and real-world compatibility evidence.
+Seeded random VJP and JVP comparison; double backward; bounded central finite
+differences; identical-RNG nondeterminism checks; reusable metamorphic properties;
+non-contiguous layouts; callable kernel boundary and optional Triton extra;
+eager, compile-eager, CPU, and hardware-conditional CUDA compatibility tests.
+
+## Toward 1.0
+
+Version 1.0 requires contracts, final reporting/CI integrations, a stable API,
+credible benchmarks, documented cost, and real-world compatibility evidence.

@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.6.0 — Unreleased
+## 0.7.0 — Unreleased
+
+- Added seeded random-cotangent VJP and random-tangent JVP checks.
+- Added second-order VJP comparison and bounded central finite differences.
+- Added same-RNG repeated execution for NG3004 nondeterminism evidence.
+- Preserved caller Python, NumPy, CPU, and CUDA RNG state across operator checks.
+- Added advanced derivative CLI flags and per-check terminal status.
+- Added optional Linux Triton extra and callable-kernel compatibility boundary.
+- Added compile-eager, CPU, and hardware-conditional CUDA compatibility tests.
+- Added advanced derivative example, cost benchmark, tests, and documentation.
+
+## 0.6.0
 
 - Added bounded per-sample selected-parameter gradient analysis.
 - Added layer globs, sample subsets, and microbatch forwards.

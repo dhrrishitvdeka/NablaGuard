@@ -117,6 +117,25 @@ RNG, buffers, and existing selected `.grad` values are restored in `finally`.
 Stochastic per-sample gradients are an analysis run and need not equal the draws
 that occurred in a separate training forward.
 
+## Advanced derivative verification
+
+The base backward check compares a VJP under either all-ones or seeded random
+cotangents. Opt-in JVP uses `torch.autograd.functional.jvp` with seeded tangents.
+Double-backward comparison differentiates the summed first-gradient vector.
+Central finite differences compare the candidate's analytical VJP with its own
+perturbed forward objective under an element budget. Determinism repeats the
+candidate after restoring identical Python, NumPy, CPU, and CUDA RNG state.
+
+Each advanced check builds fresh leaves and graphs. One failure cannot consume
+another check's autograd graph, and the entire operator analysis restores caller
+RNG state. Passing sampled JVP/VJP directions does not prove complete Jacobian or
+Hessian equality. Finite differences remain sensitive to epsilon and conditioning.
+
+Triton and CUDA-extension wrappers already fit the callable candidate boundary;
+no native Triton dependency or unsupported introspection is introduced. The
+`triton` extra is Linux-only. CPU eager remains the baseline; compile-eager and
+hardware-conditional CUDA tests provide scoped compatibility evidence only.
+
 ## Diffcheck search and shrinking
 
 `TensorStrategy` resolves through a private Python RNG into concrete

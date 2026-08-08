@@ -26,6 +26,13 @@ def format_operator_result(result: OperatorCheckResult) -> str:
         f"Forward:  {_status(result.forward)}",
         f"Backward: {_status(result.backward) if result.backward else 'SKIPPED'}",
     ]
+    optional = (
+        ("JVP", result.jvp),
+        ("Double backward", result.double_backward),
+        ("Finite difference", result.finite_difference),
+        ("Determinism", result.determinism),
+    )
+    lines.extend(f"{name}: {_status(values)}" for name, values in optional if values)
     for issue in result.issues:
         lines.extend(["", *_format_issue(issue)])
     if result.artifact_path is not None:

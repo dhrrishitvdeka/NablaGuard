@@ -266,3 +266,32 @@ Per-sample analysis performs one VJP per selected sample and retains one flatten
 gradient vector per selected sample. NablaGuard calculates this allocation before
 the first gradient and raises if it exceeds `max_gradient_elements`. Existing
 parameter gradients, module buffers, and RNG state are restored afterward.
+
+## Verify forward-, reverse-, and higher-order derivatives
+
+Advanced checks are opt-in because each adds fresh executions:
+
+```python
+result = ng.check.operator(
+    candidate=my_kernel,
+    reference=reference,
+    inputs=[ng.tensor(shape=(17,), dtype=torch.float64, layout="strided")],
+    vjp_cotangent="random",
+    check_jvp=True,
+    check_double_backward=True,
+    check_finite_difference=True,
+    check_determinism=True,
+)
+```
+
+JVP tangents and random VJP cotangents are private-seed reproducible. Central
+finite differences verify the candidate's own analytical VJP and enforce
+`max_finite_difference_elements`. Same-RNG repeated execution distinguishes
+stateful or kernel nondeterminism from expected randomness. Unsupported
+higher-order paths are explicit failures with evidence.
+
+Any callable—including a Triton wrapper when installed separately—can be a
+candidate against a PyTorch reference. NablaGuard does not claim native Triton
+introspection. CPU eager is the supported baseline; CI smoke-tests
+`torch.compile(..., backend="eager")`, while CUDA tests run only when hardware is
+available.

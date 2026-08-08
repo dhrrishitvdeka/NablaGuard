@@ -37,6 +37,10 @@ class OperatorCheckResult:
     seed: int
     forward: tuple[Comparison, ...]
     backward: tuple[Comparison, ...]
+    jvp: tuple[Comparison, ...] = ()
+    double_backward: tuple[Comparison, ...] = ()
+    finite_difference: tuple[Comparison, ...] = ()
+    determinism: tuple[Comparison, ...] = ()
     issues: tuple[NablaIssue, ...] = ()
     artifact_path: Path | None = None
     elapsed_seconds: float = 0.0
@@ -46,7 +50,17 @@ class OperatorCheckResult:
     def passed(self) -> bool:
         """Whether every requested forward and backward comparison passed."""
 
-        return all(item.passed for item in (*self.forward, *self.backward))
+        return all(
+            item.passed
+            for item in (
+                *self.forward,
+                *self.backward,
+                *self.jvp,
+                *self.double_backward,
+                *self.finite_difference,
+                *self.determinism,
+            )
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable report."""
@@ -58,6 +72,10 @@ class OperatorCheckResult:
             "passed": self.passed,
             "forward": [item.to_dict() for item in self.forward],
             "backward": [item.to_dict() for item in self.backward],
+            "jvp": [item.to_dict() for item in self.jvp],
+            "double_backward": [item.to_dict() for item in self.double_backward],
+            "finite_difference": [item.to_dict() for item in self.finite_difference],
+            "determinism": [item.to_dict() for item in self.determinism],
             "issues": [issue.to_dict() for issue in self.issues],
             "artifact_path": str(self.artifact_path) if self.artifact_path else None,
             "elapsed_seconds": self.elapsed_seconds,
