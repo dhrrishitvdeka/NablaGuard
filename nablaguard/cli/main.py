@@ -6,6 +6,7 @@ import argparse
 import importlib
 import json
 import runpy
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -19,6 +20,9 @@ from nablaguard.bisect import metric_greater_than, metric_less_than, metric_nonf
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
 from nablaguard.check.specs import TensorSpec, TensorStrategy, shapes, tensor
 from nablaguard.replay import replay
+from nablaguard.report import dumps as json_report
+from nablaguard.report import html as html_report
+from nablaguard.report import junit as junit_report
 from nablaguard.sanitize import guard
 
 
@@ -32,11 +36,20 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command")
     inspect_parser = subcommands.add_parser("inspect", help="inspect a failure artifact")
     inspect_parser.add_argument("artifact", type=Path)
+    run_parser = subcommands.add_parser("run", help="run a Python script with optional monitoring")
+    run_parser.add_argument("script", type=Path)
+    run_parser.add_argument("--capture", action="store_true", help="capture a numerical report")
+    run_parser.add_argument("--mode", choices=("light", "standard", "deep"), default="standard")
+    _add_report_options(run_parser)
+    trace_parser = subcommands.add_parser(
+        "trace", help="run a Python script and capture sensitive eager tensor operations"
+    )
+    trace_parser.add_argument("script", type=Path)
+    trace_parser.add_argument("--mode", choices=("standard", "deep"), default="standard")
+    _add_report_options(trace_parser)
     check_parser = subcommands.add_parser("check", help="verify an importable PyTorch callable")
     check_parser.add_argument("candidate", help="candidate as module:qualified_name")
-    check_parser.add_argument(
-        "--reference", required=True, help="reference as module:qualified_name"
-    )
+    check_parser.add_argument("--reference", help="reference as module:qualified_name")
     check_parser.add_argument("--shape", default="32", help="comma-separated dimensions")
     check_parser.add_argument(
         "--dtype", choices=("float64", "float32", "bfloat16", "float16"), default="float64"
@@ -49,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--double-backward", action="store_true")
     check_parser.add_argument("--finite-difference", action="store_true")
     check_parser.add_argument("--determinism", action="store_true")
+    _add_report_options(check_parser)
     sanitize_parser = subcommands.add_parser(
         "sanitize", help="run a Python script under numerical instrumentation"
     )
@@ -57,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode", choices=("light", "standard", "deep"), default="standard"
     )
     sanitize_parser.add_argument("--shadow", action="store_true")
-    sanitize_parser.add_argument("script_args", nargs=argparse.REMAINDER)
+    _add_report_options(sanitize_parser)
     replay_parser = subcommands.add_parser(
         "replay", help="restore and verify a captured training run"
     )
@@ -86,14 +100,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the NablaGuard CLI."""
 
     parser = build_parser()
-    arguments = parser.parse_args(argv)
+    arguments, remaining = parser.parse_known_args(argv)
+    if remaining and arguments.command not in {"run", "sanitize", "trace"}:
+        parser.error(f"unrecognized arguments: {' '.join(remaining)}")
     if arguments.command == "inspect":
         metadata_path = arguments.artifact / "metadata.json"
         if not metadata_path.is_file():
             parser.error(f"not a NablaGuard artifact: {arguments.artifact}")
         print(json.dumps(json.loads(metadata_path.read_text(encoding="utf-8")), indent=2))
         return 0
+    if arguments.command in {"run", "sanitize", "trace"}:
+        if not arguments.script.is_file():
+            parser.error(f"script does not exist: {arguments.script}")
+        if arguments.command == "run" and not arguments.capture:
+            _execute_script(arguments.script, remaining)
+            return 0
+        monitor = guard(
+            mode=arguments.mode,
+            shadow=getattr(arguments, "shadow", False) or None,
+        )
+        with monitor:
+            _execute_script(arguments.script, remaining)
+        _emit_report(monitor, arguments.format, arguments.output, console=monitor.format())
+        return 1 if monitor.issues else 0
     if arguments.command == "check":
+        candidate_path = Path(arguments.candidate)
+        if arguments.reference is None and candidate_path.suffix == ".py":
+            completed = subprocess.run(
+                [sys.executable, "-m", "pytest", str(candidate_path)],
+                check=False,
+            )
+            return completed.returncode
+        if arguments.reference is None:
+            parser.error("--reference is required for an importable callable")
         candidate = _load_callable(arguments.candidate)
         reference = _load_callable(arguments.reference)
         shape = _parse_shape(arguments.shape)
@@ -138,21 +177,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 seed=arguments.seed,
                 artifact_dir=arguments.artifact_dir,
             )
-        result.print()
+        _emit_report(result, arguments.format, arguments.output, console=result.format())
         return 0 if result.passed else 1
-    if arguments.command == "sanitize":
-        if not arguments.script.is_file():
-            parser.error(f"script does not exist: {arguments.script}")
-        original_argv = sys.argv
-        sys.argv = [str(arguments.script), *arguments.script_args]
-        monitor = guard(mode=arguments.mode, shadow=arguments.shadow or None)
-        try:
-            with monitor:
-                runpy.run_path(str(arguments.script), run_name="__main__")
-        finally:
-            sys.argv = original_argv
-        monitor.print()
-        return 1 if monitor.issues else 0
     if arguments.command == "replay":
         model_factory = _load_callable(arguments.model_factory)
         step_function = _load_callable(arguments.step_function)
@@ -220,6 +246,47 @@ def _parse_shape(value: str) -> tuple[int, ...]:
     if any(dimension < 0 for dimension in shape):
         raise ValueError("shape dimensions cannot be negative")
     return shape
+
+
+def _add_report_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--format",
+        choices=("console", "json", "html", "junit"),
+        default="console",
+        help="report encoding",
+    )
+    parser.add_argument("--output", type=Path, help="write the report to a file")
+
+
+def _execute_script(script: Path, script_args: Sequence[str]) -> None:
+    original_argv = sys.argv
+    sys.argv = [str(script), *script_args]
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    finally:
+        sys.argv = original_argv
+
+
+def _emit_report(
+    report: Any,
+    selected_format: str,
+    output: Path | None,
+    *,
+    console: str,
+) -> None:
+    if selected_format == "json":
+        rendered = json_report(report)
+    elif selected_format == "html":
+        rendered = html_report(report)
+    elif selected_format == "junit":
+        rendered = junit_report(report)
+    else:
+        rendered = console
+    if output is None:
+        print(rendered)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="utf-8")
 
 
 if __name__ == "__main__":

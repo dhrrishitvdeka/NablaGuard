@@ -50,3 +50,51 @@ def test_cli_sanitize_runs_script_without_modification(tmp_path: Path, capsys) -
     output = capsys.readouterr().out
     assert "OVERFLOW_RISK" in output
     assert str(script) in output
+
+
+def test_cli_run_accepts_capture_after_script_and_writes_json(tmp_path: Path) -> None:
+    script = tmp_path / "healthy.py"
+    output = tmp_path / "report.json"
+    script.write_text("import torch\ntorch.logsumexp(torch.tensor([1.0]), 0)\n", encoding="utf-8")
+
+    exit_code = main(["run", str(script), "--capture", "--format", "json", "--output", str(output)])
+
+    assert exit_code == 0
+    assert '"passed": true' in output.read_text(encoding="utf-8")
+
+
+def test_cli_trace_passes_remaining_arguments_to_script(tmp_path: Path) -> None:
+    script = tmp_path / "arguments.py"
+    observed = tmp_path / "observed.txt"
+    script.write_text(
+        "import pathlib, sys, torch\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.argv[2], encoding='utf-8')\n"
+        "torch.exp(torch.tensor([1.0]))\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(["trace", str(script), str(observed), "payload"])
+
+    assert exit_code == 0
+    assert observed.read_text(encoding="utf-8") == "payload"
+
+
+def test_cli_check_writes_junit(tmp_path: Path) -> None:
+    output = tmp_path / "check.xml"
+    exit_code = main(
+        [
+            "check",
+            "torch:neg",
+            "--reference",
+            "torch:positive",
+            "--shape",
+            "4",
+            "--format",
+            "junit",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == 1
+    assert 'failures="' in output.read_text(encoding="utf-8")

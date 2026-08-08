@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
+from typing import Any
 
 from .config import NablaConfig
 from .events import TensorEvent
@@ -43,6 +44,20 @@ class Session:
         """Add an issue to this session."""
 
         self.issues.append(issue)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a stable machine-readable session report."""
+
+        return {
+            "issues": [issue.to_dict() for issue in self.issues],
+            "events": [event.to_dict() for event in self.events],
+            "dropped_events": self.dropped_events,
+            "summary": {
+                "issue_count": len(self.issues),
+                "event_count": len(self.events),
+                "passed": not self.issues,
+            },
+        }
 
 
 def current_session() -> Session | None:
