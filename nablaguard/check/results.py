@@ -18,8 +18,8 @@ class Comparison:
     max_relative_error: float
     mean_absolute_error: float
     failing_index: tuple[int, ...] | None = None
-    candidate_value: float | None = None
-    reference_value: float | None = None
+    candidate_value: float | str | None = None
+    reference_value: float | str | None = None
     note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

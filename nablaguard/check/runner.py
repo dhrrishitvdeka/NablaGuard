@@ -21,6 +21,7 @@ from .advanced import (
 )
 from .artifacts import write_failure_artifact
 from .compare import compare_tensors
+from .isolation import isolated_callable
 from .results import Comparison, OperatorCheckResult
 from .specs import TensorSpec
 
@@ -98,9 +99,15 @@ def _operator_impl(
     originals = [_materialize(value, seed + index) for index, value in enumerate(inputs)]
     candidate_inputs = [_leaf_copy(value) for value in originals]
     reference_inputs = [_leaf_copy(value) for value in originals]
+    candidate_execution = isolated_callable(candidate)
+    reference_execution = isolated_callable(reference)
 
-    candidate_outputs = _as_tensor_tuple(candidate(*candidate_inputs))
-    reference_outputs = _as_tensor_tuple(reference(*reference_inputs))
+    paired_rng_state = capture_rng_state()
+    restore_rng_state(paired_rng_state)
+    candidate_outputs = _as_tensor_tuple(candidate_execution(*candidate_inputs))
+    restore_rng_state(paired_rng_state)
+    reference_outputs = _as_tensor_tuple(reference_execution(*reference_inputs))
+    restore_rng_state(paired_rng_state)
     forward = _compare_sequences(
         candidate_outputs,
         reference_outputs,
@@ -123,8 +130,8 @@ def _operator_impl(
 
     jvp = (
         compare_jvp(
-            candidate,
-            reference,
+            candidate_execution,
+            reference_execution,
             originals,
             seed=seed,
             absolute_tolerance=absolute_tolerance,
@@ -135,8 +142,8 @@ def _operator_impl(
     )
     double_backward = (
         compare_double_backward(
-            candidate,
-            reference,
+            candidate_execution,
+            reference_execution,
             originals,
             absolute_tolerance=absolute_tolerance,
             relative_tolerance=relative_tolerance,
@@ -146,7 +153,7 @@ def _operator_impl(
     )
     finite_difference = (
         compare_finite_difference(
-            candidate,
+            candidate_execution,
             originals,
             epsilon=finite_difference_epsilon,
             max_elements=max_finite_difference_elements,
@@ -156,7 +163,7 @@ def _operator_impl(
         if check_finite_difference
         else ()
     )
-    determinism = compare_determinism(candidate, originals) if check_determinism else ()
+    determinism = compare_determinism(candidate_execution, originals) if check_determinism else ()
 
     issues = _issues_from_comparisons(
         forward, backward, jvp, double_backward, finite_difference, determinism
@@ -183,6 +190,7 @@ def _operator_impl(
             "input_shapes": [list(value.shape) for value in originals],
             "input_dtypes": [str(value.dtype) for value in originals],
             "input_strides": [list(value.stride()) for value in originals],
+            "input_requires_grad": [value.requires_grad for value in originals],
             "vjp_cotangent": vjp_cotangent,
         },
     )
@@ -197,9 +205,10 @@ def _materialize(value: TensorSpec | torch.Tensor, seed: int) -> torch.Tensor:
     if isinstance(value, TensorSpec):
         generator = torch.Generator(device=value.device)
         generator.manual_seed(seed)
-        return value.generate(generator).detach()
+        generated = value.generate(generator)
+        return generated.detach().requires_grad_(generated.requires_grad)
     if isinstance(value, torch.Tensor):
-        return value.detach().clone()
+        return value.detach().clone().requires_grad_(value.requires_grad)
     raise TypeError(f"inputs must contain TensorSpec or Tensor, got {type(value)!r}")
 
 
@@ -218,7 +227,7 @@ def _leaf_copy(value: torch.Tensor) -> torch.Tensor:
             value.shape, value.stride(), dtype=value.dtype, device=value.device
         )
         copy.copy_(detached)
-    if copy.is_floating_point() or copy.is_complex():
+    if value.requires_grad and (copy.is_floating_point() or copy.is_complex()):
         copy.requires_grad_(True)
     return copy
 
@@ -284,17 +293,11 @@ def _compare_backward(
     else:
         raise ValueError("vjp_cotangent must be 'ones' or 'random'")
     reference_cotangents = tuple(value.clone() for value in candidate_cotangents)
-    candidate_gradients = torch.autograd.grad(
-        candidate_outputs,
-        candidate_inputs,
-        grad_outputs=candidate_cotangents,
-        allow_unused=True,
+    candidate_gradients = _safe_gradients(
+        candidate_outputs, candidate_inputs, candidate_cotangents
     )
-    reference_gradients = torch.autograd.grad(
-        reference_outputs,
-        reference_inputs,
-        grad_outputs=reference_cotangents,
-        allow_unused=True,
+    reference_gradients = _safe_gradients(
+        reference_outputs, reference_inputs, reference_cotangents
     )
     comparisons: list[Comparison] = []
     for observed, expected in zip(candidate_gradients, reference_gradients, strict=True):
@@ -321,6 +324,31 @@ def _compare_backward(
                 )
             )
     return tuple(comparisons)
+
+
+def _safe_gradients(
+    outputs: tuple[torch.Tensor, ...],
+    inputs: list[torch.Tensor],
+    cotangents: tuple[torch.Tensor, ...],
+) -> tuple[torch.Tensor | None, ...]:
+    active_inputs = [(index, value) for index, value in enumerate(inputs) if value.requires_grad]
+    active_outputs = [
+        (output, cotangent)
+        for output, cotangent in zip(outputs, cotangents, strict=True)
+        if output.requires_grad
+    ]
+    gradients: list[torch.Tensor | None] = [None] * len(inputs)
+    if not active_inputs or not active_outputs:
+        return tuple(gradients)
+    calculated = torch.autograd.grad(
+        tuple(output for output, _ in active_outputs),
+        tuple(value for _, value in active_inputs),
+        grad_outputs=tuple(cotangent for _, cotangent in active_outputs),
+        allow_unused=True,
+    )
+    for (index, _), gradient in zip(active_inputs, calculated, strict=True):
+        gradients[index] = gradient
+    return tuple(gradients)
 
 
 def _seeded_cotangent(output: torch.Tensor, seed: int) -> torch.Tensor:
@@ -358,12 +386,20 @@ def _issues_from_comparisons(
         )
     if any(not comparison.passed for comparison in backward):
         worst = max(backward, key=lambda item: item.max_absolute_error)
+        missing_gradient = any(
+            comparison.note == "gradient presence mismatch: candidate=False, reference=True"
+            for comparison in backward
+        )
         issues.append(
             NablaIssue(
                 code="NG3002",
-                category="BACKWARD_MISMATCH",
+                category="MISSING_GRADIENT" if missing_gradient else "BACKWARD_MISMATCH",
                 severity=Severity.CRITICAL,
-                message="Candidate VJP differs from reference autograd.",
+                message=(
+                    "Candidate did not produce a gradient required by the reference."
+                    if missing_gradient
+                    else "Candidate VJP differs from reference autograd."
+                ),
                 evidence=worst.to_dict(),
                 suggestion="Check the custom backward formula and saved forward values.",
             )

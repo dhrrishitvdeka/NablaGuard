@@ -107,6 +107,22 @@ def test_operator_analysis_restores_global_rng_state() -> None:
     assert torch.equal(observed, expected)
 
 
+def test_jvp_candidate_and_reference_receive_identical_rng_state() -> None:
+    def stochastic(value: torch.Tensor) -> torch.Tensor:
+        return value * torch.rand_like(value)
+
+    result = ng.check.operator(
+        candidate=stochastic,
+        reference=stochastic,
+        inputs=[ng.tensor(shape=(4,), dtype=torch.float64)],
+        check_backward=False,
+        check_jvp=True,
+    )
+
+    assert result.passed
+    assert all(comparison.passed for comparison in result.jvp)
+
+
 def test_finite_difference_has_explicit_element_budget() -> None:
     try:
         ng.check.operator(

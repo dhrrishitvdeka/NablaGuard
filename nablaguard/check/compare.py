@@ -28,8 +28,11 @@ def compare_tensors(
             ),
         )
 
-    observed = candidate.detach().to(torch.float64)
-    expected = reference.detach().to(torch.float64)
+    comparison_dtype = (
+        torch.complex128 if candidate.is_complex() or reference.is_complex() else torch.float64
+    )
+    observed = candidate.detach().to(comparison_dtype)
+    expected = reference.detach().to(comparison_dtype)
     absolute = (observed - expected).abs()
     denominator = expected.abs().clamp_min(max(absolute_tolerance, torch.finfo(torch.float64).tiny))
     relative = absolute / denominator
@@ -57,8 +60,8 @@ def compare_tensors(
         max_relative_error=float(torch.max(torch.nan_to_num(relative, nan=float("inf"))).item()),
         mean_absolute_error=float(torch.mean(safe_absolute).item()),
         failing_index=None if passed else index,
-        candidate_value=None if passed else float(observed[index].item()),
-        reference_value=None if passed else float(expected[index].item()),
+        candidate_value=None if passed else _scalar(observed[index]),
+        reference_value=None if passed else _scalar(expected[index]),
     )
 
 
@@ -70,3 +73,8 @@ def _unravel_index(index: int, shape: tuple[int, ...]) -> tuple[int, ...]:
         coordinates.append(index % dimension)
         index //= dimension
     return tuple(reversed(coordinates))
+
+
+def _scalar(value: torch.Tensor) -> float | str:
+    scalar = value.item()
+    return repr(scalar) if isinstance(scalar, complex) else float(scalar)

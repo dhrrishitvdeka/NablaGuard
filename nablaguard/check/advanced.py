@@ -10,6 +10,7 @@ import torch
 from nablaguard.capture.rng import capture_rng_state, restore_rng_state
 
 from .compare import compare_tensors
+from .isolation import call_with_isolated_module_state
 from .results import Comparison
 
 
@@ -27,16 +28,19 @@ def compare_jvp(
     candidate_inputs = tuple(_leaf(value) for value in inputs)
     reference_inputs = tuple(_leaf(value) for value in inputs)
     tangents = tuple(_random_like(value, seed + index) for index, value in enumerate(inputs))
+    state = capture_rng_state()
     try:
+        restore_rng_state(state)
         _, candidate_jvp = torch.autograd.functional.jvp(
-            candidate,
+            lambda *values: call_with_isolated_module_state(candidate, values),
             candidate_inputs,
             tangents,
             create_graph=False,
             strict=False,
         )
+        restore_rng_state(state)
         _, reference_jvp = torch.autograd.functional.jvp(
-            reference,
+            lambda *values: call_with_isolated_module_state(reference, values),
             reference_inputs,
             tuple(value.clone() for value in tangents),
             create_graph=False,
@@ -44,6 +48,8 @@ def compare_jvp(
         )
     except (RuntimeError, TypeError, NotImplementedError) as error:
         return (_error_comparison("JVP", error),)
+    finally:
+        restore_rng_state(state)
     return _compare_outputs(
         candidate_jvp,
         reference_jvp,
@@ -62,11 +68,20 @@ def compare_double_backward(
 ) -> tuple[Comparison, ...]:
     """Compare Hessian-vector products induced by all-ones first-gradient vectors."""
 
+    state = capture_rng_state()
     try:
-        candidate_values = _second_order(candidate, inputs)
-        reference_values = _second_order(reference, inputs)
+        restore_rng_state(state)
+        candidate_values = _second_order(
+            lambda *values: call_with_isolated_module_state(candidate, values), inputs
+        )
+        restore_rng_state(state)
+        reference_values = _second_order(
+            lambda *values: call_with_isolated_module_state(reference, values), inputs
+        )
     except (RuntimeError, TypeError, NotImplementedError) as error:
         return (_error_comparison("double backward", error),)
+    finally:
+        restore_rng_state(state)
     return tuple(
         compare_tensors(
             observed,
@@ -100,7 +115,7 @@ def compare_finite_difference(
         )
     analytical_inputs = tuple(_leaf(value) for value in inputs)
     try:
-        outputs = _outputs(candidate(*analytical_inputs))
+        outputs = _outputs(call_with_isolated_module_state(candidate, analytical_inputs))
         analytical = torch.autograd.grad(
             outputs,
             analytical_inputs,
@@ -121,8 +136,8 @@ def compare_finite_difference(
             _perturb(positive[input_index], element, epsilon)
             _perturb(negative[input_index], element, -epsilon)
             with torch.no_grad():
-                high = _objective(candidate(*positive))
-                low = _objective(candidate(*negative))
+                high = _objective(call_with_isolated_module_state(candidate, positive))
+                low = _objective(call_with_isolated_module_state(candidate, negative))
             flat[element] = (high - low) / (2 * epsilon)
         observed = torch.zeros_like(value) if gradient is None else gradient
         comparisons.append(
@@ -145,9 +160,13 @@ def compare_determinism(
     state = capture_rng_state()
     try:
         restore_rng_state(state)
-        first = candidate(*(_leaf(value) for value in inputs))
+        first = call_with_isolated_module_state(
+            candidate, tuple(_leaf(value) for value in inputs)
+        )
         restore_rng_state(state)
-        second = candidate(*(_leaf(value) for value in inputs))
+        second = call_with_isolated_module_state(
+            candidate, tuple(_leaf(value) for value in inputs)
+        )
     except (RuntimeError, TypeError, NotImplementedError) as error:
         return (_error_comparison("determinism", error),)
     finally:

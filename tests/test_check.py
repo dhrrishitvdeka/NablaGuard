@@ -102,3 +102,71 @@ def test_check_emits_into_shared_session() -> None:
         )
 
     assert [issue.code for issue in session.issues] == ["NG3001"]
+
+
+def test_detached_candidate_is_reported_as_missing_gradient() -> None:
+    result = ng.check.operator(
+        candidate=lambda value: value.detach().square(),
+        reference=lambda value: value.square(),
+        inputs=[ng.tensor(shape=(4,), dtype=torch.float64)],
+    )
+
+    assert not result.passed
+    assert [issue.category for issue in result.issues] == ["MISSING_GRADIENT"]
+
+
+def test_non_differentiable_float_inputs_preserve_requires_grad() -> None:
+    value = torch.tensor([1.0, 2.0], dtype=torch.float64, requires_grad=True)
+    scale = torch.tensor(2.0, dtype=torch.float64, requires_grad=False)
+
+    result = ng.check.operator(
+        candidate=lambda input_value, factor: input_value * factor,
+        reference=lambda input_value, factor: input_value * factor,
+        inputs=[value, scale],
+    )
+
+    assert result.passed
+    assert result.metadata["input_requires_grad"] == [True, False]
+    assert len(result.backward) == 2
+
+
+def test_complex_imaginary_mismatch_is_detected() -> None:
+    value = torch.tensor([1 + 2j], dtype=torch.complex128)
+
+    result = ng.check.operator(
+        candidate=lambda input_value: input_value + 1j,
+        reference=lambda input_value: input_value,
+        inputs=[value],
+        check_backward=False,
+    )
+
+    assert not result.passed
+    assert result.forward[0].max_absolute_error == 1.0
+    assert result.forward[0].candidate_value == "(1+3j)"
+
+
+def test_candidate_and_reference_receive_identical_rng_state() -> None:
+    def stochastic(value: torch.Tensor) -> torch.Tensor:
+        return value + torch.rand_like(value)
+
+    result = ng.check.operator(
+        candidate=stochastic,
+        reference=stochastic,
+        inputs=[ng.tensor(shape=(8,), dtype=torch.float64)],
+    )
+
+    assert result.passed
+
+
+def test_operator_check_restores_module_buffers() -> None:
+    module = torch.nn.BatchNorm1d(3, dtype=torch.float64)
+    original_batches = module.num_batches_tracked.detach().clone()
+
+    result = ng.check.operator(
+        candidate=module,
+        reference=module,
+        inputs=[ng.tensor(shape=(4, 3), dtype=torch.float64)],
+    )
+
+    assert result.passed
+    assert torch.equal(module.num_batches_tracked, original_batches)
