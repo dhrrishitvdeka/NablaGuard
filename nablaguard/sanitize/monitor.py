@@ -11,6 +11,7 @@ from typing import Any
 
 import torch
 
+from nablaguard.contracts import Contract, ContractContext
 from nablaguard.core import (
     NablaConfig,
     NablaIssue,
@@ -53,6 +54,7 @@ class Guard(Session):
     cancellation_threshold: float = 0.99
     operations: tuple[str, ...] | None = None
     capture_source: bool = True
+    contracts: tuple[Contract, ...] = ()
     _handles: list[Any] = field(default_factory=list, init=False, repr=False)
     _dispatch_mode: NumericalDispatchMode | None = field(default=None, init=False, repr=False)
     _analysis_depth: int = field(default=0, init=False, repr=False)
@@ -128,6 +130,13 @@ class Guard(Session):
         )
         self.emit_event(event)
         self._tensor_producers[id(tensor)] = event.event_id
+        context = ContractContext(
+            tensor=tensor,
+            module_path=module_path,
+            operation=operation,
+        )
+        for assertion in self.contracts:
+            assertion.evaluate(context)
         if statistics.nan_count or statistics.inf_count:
             self.emit_issue(
                 NablaIssue(
@@ -373,6 +382,7 @@ def guard(
     capture_source: bool = True,
     max_events: int = 10_000,
     extreme_value_threshold: float | None = None,
+    contracts: Iterable[Contract] = (),
 ) -> Guard:
     """Create a bounded numerical monitoring context."""
 
@@ -400,6 +410,7 @@ def guard(
         cancellation_threshold=cancellation_threshold,
         operations=tuple(operations) if operations is not None else None,
         capture_source=capture_source,
+        contracts=tuple(contracts),
     )
 
 

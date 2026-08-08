@@ -1,10 +1,11 @@
 """NablaGuard public API: verify and explain differentiable computations."""
 
-from . import check, precision, report, trace
+from . import check, contracts, precision, report, trace
 from .bisect.runner import BisectResult, BoundaryState, bisect
 from .capture.recorder import Recorder, capture
 from .check.properties import Property, equivalent, property
 from .check.specs import ShapeStrategy, TensorSpec, TensorStrategy, shapes, tensor
+from .contracts.base import Contract, ContractContext, ContractViolation, contract
 from .core import NablaConfig, NablaIssue, Session, Severity, TensorEvent
 from .replay.runner import ReplayResult, replay
 from .sanitize import Guard, guard, sanitize, shadow_rule
@@ -15,6 +16,9 @@ __all__ = [
     "Guard",
     "BisectResult",
     "BoundaryState",
+    "Contract",
+    "ContractContext",
+    "ContractViolation",
     "NablaConfig",
     "NablaIssue",
     "Property",
@@ -28,6 +32,8 @@ __all__ = [
     "TensorStrategy",
     "check",
     "capture",
+    "contract",
+    "contracts",
     "bisect",
     "equivalent",
     "guard",
