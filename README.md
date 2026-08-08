@@ -26,9 +26,20 @@ than implied by the version number.
 
 ## Install
 
+Install the signed release asset directly from GitHub:
+
 ```bash
-pip install -e ".[dev]"
+python -m pip install "https://github.com/dhrrishitvdeka/NablaGuard/releases/download/v1.0.0/nablaguard-1.0.0-py3-none-any.whl"
 nabla --version
+```
+
+For contributors working from a clone, install the checkout in editable mode
+with the development tools:
+
+```bash
+git clone https://github.com/dhrrishitvdeka/NablaGuard.git
+cd NablaGuard
+python -m pip install -e ".[dev]"
 ```
 
 ## Check a differentiable operator
