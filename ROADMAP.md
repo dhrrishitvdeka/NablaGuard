@@ -29,8 +29,14 @@ environment and determinism limitations; bounded tensor fingerprints; nearest-
 checkpoint restoration; exact fingerprint/RNG replay validation and first-
 divergence reporting.
 
+## 0.5 — Training bisection (implemented)
+
+Monotonic first-bad binary search; metadata and checkpoint-aware replay probes;
+fresh-state factories; git-bisect-style history; trigger-batch and adjacent-step
+fingerprint diagnosis with observed/inferred/unknown labeling.
+
 ## Later releases
 
-Checkpoint-aware training bisection (0.5), per-sample gradient analysis (0.6),
-and kernel/JVP/higher-order verification (0.7). Version 1.0 requires a stable
-API, credible benchmarks, documented cost, and real-world compatibility evidence.
+Per-sample gradient analysis (0.6) and kernel/JVP/higher-order verification
+(0.7). Version 1.0 requires a stable API, credible benchmarks, documented cost,
+and real-world compatibility evidence.

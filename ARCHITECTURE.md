@@ -84,6 +84,23 @@ digests produce `MATCH`, `DIVERGENCE`, or `UNVERIFIED`. Trusted local checkpoint
 loading uses Python pickle through `torch.load`; untrusted run directories must
 not be replayed.
 
+## Training bisection and boundary diagnosis
+
+The generic search primitive verifies one known-good and one known-bad endpoint,
+then performs a logarithmic false-to-true binary search. It assumes the supplied
+predicate is monotonic; checking all unobserved steps would defeat the purpose
+of bisection.
+
+Captured-run bisection either evaluates JSON metadata directly or constructs
+fresh model/optimizer objects for every probe, restores the nearest full
+checkpoint, and replays to the midpoint. Reusing mutable model state between
+probes is forbidden by the factory API.
+
+Diagnosis compares N−1 with N: loss, trigger batch identity, checksum presence,
+and min/max/mean/std/norm fingerprint changes. It ranks relative scalar changes
+but labels each `OBSERVED`, not causal. Uncaptured gradient, activation,
+optimizer, data, and external state remain explicitly `UNKNOWN`.
+
 ## Diffcheck search and shrinking
 
 `TensorStrategy` resolves through a private Python RNG into concrete

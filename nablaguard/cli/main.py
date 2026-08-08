@@ -14,6 +14,8 @@ from typing import Any, cast
 import torch
 
 from nablaguard import __version__
+from nablaguard.bisect import bisect as bisect_run
+from nablaguard.bisect import metric_greater_than, metric_less_than, metric_nonfinite
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
 from nablaguard.check.specs import TensorSpec, TensorStrategy, shapes, tensor
 from nablaguard.replay import replay
@@ -61,6 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--from-step", type=int, default=0)
     replay_parser.add_argument("--to-step", type=int)
     replay_parser.add_argument("--continue-on-divergence", action="store_true")
+    bisect_parser = subcommands.add_parser(
+        "bisect", help="locate a monotonic failure transition in captured metadata"
+    )
+    bisect_parser.add_argument("run", type=Path)
+    bisect_parser.add_argument("--metric", required=True)
+    bisect_thresholds = bisect_parser.add_mutually_exclusive_group(required=True)
+    bisect_thresholds.add_argument("--greater-than", type=float)
+    bisect_thresholds.add_argument("--less-than", type=float)
+    bisect_thresholds.add_argument("--nonfinite", action="store_true")
+    bisect_parser.add_argument("--known-good", type=int, default=0)
+    bisect_parser.add_argument("--known-bad", type=int)
     return parser
 
 
@@ -148,6 +161,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         replay_result.print()
         return 0 if replay_result.passed else 1
+    if arguments.command == "bisect":
+        if arguments.greater_than is not None:
+            predicate = metric_greater_than(arguments.metric, arguments.greater_than)
+        elif arguments.less_than is not None:
+            predicate = metric_less_than(arguments.metric, arguments.less_than)
+        else:
+            predicate = metric_nonfinite(arguments.metric)
+        bisect_result = bisect_run(
+            arguments.run,
+            predicate,
+            known_good=arguments.known_good,
+            known_bad=arguments.known_bad,
+        )
+        bisect_result.print()
+        return 0
     parser.print_help()
     return 0
 

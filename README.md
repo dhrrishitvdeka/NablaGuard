@@ -7,7 +7,7 @@ analysis, differentiable operator testing, deterministic training replay, and
 failure bisection. Version 0.3 implements the verification foundation,
 tensor-aware diffcheck, selective eager numerical instrumentation, and
 experimental precision auditing, layered training capture, and deterministic
-replay validation; training bisection remains later roadmap work.
+replay validation, and checkpoint-aware training bisection.
 
 ## Catch a broken backward
 
@@ -213,3 +213,32 @@ same named tensors that were fingerprinted. Replay reports exact checksum and
 RNG matches, the first divergence, environment differences, or `UNVERIFIED`
 when the callback returns no tensors. Restoration alone is never called proof
 of determinism.
+
+## Bisect the first bad training boundary
+
+Captured scalar metadata can be searched directly:
+
+```python
+from nablaguard.bisect import metric_greater_than
+
+result = ng.bisect(
+    run_path,
+    metric_greater_than("loss", 10),
+    known_good=0,
+    known_bad=14281,
+)
+result.print()
+```
+
+Or pass `model_factory` and `step_fn` to restore the nearest checkpoint and
+replay each midpoint before applying a Python predicate to `BoundaryState`.
+Binary search assumes one monotonic good-to-bad transition; it verifies endpoint
+labels but cannot prove unobserved monotonicity in logarithmic time.
+
+Boundary diagnosis compares captured loss, trigger batch, and tensor fingerprint
+statistics at N−1 and N. Changes are labeled `OBSERVED`; causality remains
+`UNKNOWN` unless established outside this report.
+
+```bash
+nabla bisect .nabla/runs/run-id --metric loss --greater-than 10
+```

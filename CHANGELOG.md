@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.4.0 — Unreleased
+## 0.5.0 — Unreleased
+
+- Added generic monotonic first-bad-step binary search.
+- Added captured metadata and checkpoint-aware replay probe modes.
+- Added fresh model/optimizer factories so probes cannot share mutated state.
+- Added git-bisect-style probe history and restoration-cost evidence.
+- Added adjacent-boundary loss, batch, and tensor-fingerprint diagnosis.
+- Labeled boundary changes observed and causality unknown.
+- Added metric predicates, `nabla bisect`, examples, and accuracy benchmark.
+
+## 0.4.0
 
 - Added layered full checkpoints, step metadata, and batch/data-state capture.
 - Added Python, NumPy, PyTorch CPU, and available CUDA RNG capture and restoration.
