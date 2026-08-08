@@ -15,6 +15,8 @@ from typing import Any, cast
 import torch
 
 from nablaguard import __version__
+from nablaguard.benchmark import BugBenchConfigError, run_bugbench
+from nablaguard.benchmark.bugbench import json_dumps as bugbench_json
 from nablaguard.bisect import bisect as bisect_run
 from nablaguard.bisect import metric_greater_than, metric_less_than, metric_nonfinite
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
@@ -93,6 +95,16 @@ def build_parser() -> argparse.ArgumentParser:
     bisect_thresholds.add_argument("--nonfinite", action="store_true")
     bisect_parser.add_argument("--known-good", type=int, default=0)
     bisect_parser.add_argument("--known-bad", type=int)
+    benchmark_parser = subcommands.add_parser("benchmark", help="run reproducible benchmarks")
+    benchmark_suites = benchmark_parser.add_subparsers(dest="benchmark_suite", required=True)
+    bugbench_parser = benchmark_suites.add_parser(
+        "bugbench", help="run the ground-truth ML bug benchmark"
+    )
+    bugbench_parser.add_argument("--root", type=Path, default=Path("benchmarks/bugbench"))
+    bugbench_parser.add_argument("--seed", type=int, default=81927183)
+    bugbench_parser.add_argument("--category", action="append", dest="categories")
+    bugbench_parser.add_argument("--format", choices=("console", "json"), default="console")
+    bugbench_parser.add_argument("--output", type=Path)
     return parser
 
 
@@ -222,6 +234,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         bisect_result.print()
         return 0
+    if arguments.command == "benchmark" and arguments.benchmark_suite == "bugbench":
+        try:
+            benchmark_result = run_bugbench(
+                arguments.root,
+                seed=arguments.seed,
+                categories=arguments.categories,
+            )
+        except BugBenchConfigError as error:
+            print(f"Invalid BugBench configuration: {error}", file=sys.stderr)
+            return 3
+        rendered = (
+            bugbench_json(benchmark_result)
+            if arguments.format == "json"
+            else benchmark_result.format()
+        )
+        if arguments.output is None:
+            print(rendered)
+        else:
+            arguments.output.parent.mkdir(parents=True, exist_ok=True)
+            arguments.output.write_text(rendered + "\n", encoding="utf-8")
+        return benchmark_result.exit_code
     parser.print_help()
     return 0
 
