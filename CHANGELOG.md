@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — Unreleased
+
+- Added custom and built-in training contracts integrated with guards and capture.
+- Added JSON, self-contained HTML, JUnit XML, and structured report diff support.
+- Completed the `run`, `sanitize`, `trace`, `check`, `replay`, `bisect`, and `inspect` CLI.
+- Added controlled broken-model regression fixtures and a unified benchmark matrix.
+- Documented measured performance, API boundaries, and the underlying mathematics.
+- Marked the package as a release candidate pending independent project validation.
+
 ## 0.7.0 — Unreleased
 
 - Added seeded random-cotangent VJP and random-tangent JVP checks.

@@ -19,5 +19,12 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: mypy nablaguard
-      - run: pytest --cov=nablaguard --cov-report=term-missing
-
+      - run: pytest --cov=nablaguard --cov-report=term-missing --junitxml=pytest-results.xml
+      - run: python benchmarks/suite.py --quick --output nablaguard-benchmark.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-python-${{ matrix.python-version }}
+          path: |
+            pytest-results.xml
+            nablaguard-benchmark.json

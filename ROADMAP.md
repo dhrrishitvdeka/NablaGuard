@@ -48,7 +48,22 @@ differences; identical-RNG nondeterminism checks; reusable metamorphic propertie
 non-contiguous layouts; callable kernel boundary and optional Triton extra;
 eager, compile-eager, CPU, and hardware-conditional CUDA compatibility tests.
 
-## Toward 1.0
+## 0.8 — Training contracts (implemented)
 
-Version 1.0 requires contracts, final reporting/CI integrations, a stable API,
-credible benchmarks, documented cost, and real-world compatibility evidence.
+Custom and built-in loss, tensor, gradient, parameter-update, and loss-history
+contracts; normal issue emission; fail-fast and artifact-callback hooks; guard
+and capture integration; step-metadata persistence.
+
+## 0.9 — Release candidate (implemented)
+
+Console, JSON, self-contained HTML, JUnit XML, and structured report diffs;
+complete CLI command surface and CI exit codes; controlled broken-model
+regressions; unified benchmark matrix; measured cost documentation; mathematical
+guides; stable pre-1.0 public exports.
+
+## 1.0 — External validation gate
+
+The locally implementable roadmap is complete. Version 1.0 remains gated on
+published testing against independent real-world projects and broader hardware
+coverage. This is evidence work, not another feature milestone; the project
+will not substitute controlled fixtures for that claim.

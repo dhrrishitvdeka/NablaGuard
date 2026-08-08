@@ -1,92 +1,69 @@
 # NablaGuard
 
-Debug the math, not just the code.
+**Debug the math, not just the code.**
 
-NablaGuard is a PyTorch-first toolkit for numerical verification, gradient
-analysis, differentiable operator testing, deterministic training replay, and
-failure bisection. Version 0.3 implements the verification foundation,
-tensor-aware diffcheck, selective eager numerical instrumentation, and
-experimental precision auditing, layered training capture, and deterministic
-replay validation, and checkpoint-aware training bisection.
+NablaGuard is a PyTorch-first toolkit for checking differentiable operators,
+finding numerical instability, explaining gradient geometry, capturing and
+replaying training state, and bisecting the first bad step. Its diagnostics are
+computed algorithmically and carry stable issue codes, evidence, and explicit
+limitations.
 
-## Catch a broken backward
+This repository is a **0.9 release candidate**. CPU eager execution is the
+supported baseline. Version 1.0 is intentionally reserved until independent
+real-world compatibility testing is complete.
 
-This custom function computes `x²` correctly in its forward pass and returns
-the wrong derivative in its backward pass:
+## Install
+
+```bash
+pip install -e ".[dev]"
+nabla --version
+```
+
+## Check a differentiable operator
 
 ```python
 import torch
 import nablaguard as ng
 
 
-class BadFunction(torch.autograd.Function):
+class WrongSquare(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
         ctx.save_for_backward(x)
-        return x**2
+        return x.square()
 
     @staticmethod
     def backward(ctx, grad_output):
         (x,) = ctx.saved_tensors
-        return grad_output * x  # wrong: expected 2 * x
+        return grad_output * x  # expected 2 * x
 
 
 result = ng.check.operator(
-    candidate=BadFunction.apply,
-    reference=lambda x: x**2,
+    candidate=WrongSquare.apply,
+    reference=lambda x: x.square(),
     inputs=[ng.tensor(shape=(32,), dtype=torch.float64)],
+    vjp_cotangent="random",
+    check_jvp=True,
+    check_finite_difference=True,
 )
 result.print()
 ```
 
-NablaGuard reports a passing forward comparison and `NG3002
-BACKWARD_MISMATCH`, including the worst absolute and relative VJP errors. Every
-generated experiment prints its seed; pass the same seed to repeat it.
+Forward, VJP, JVP, double-backward, finite-difference, and same-RNG
+nondeterminism checks are available. Every generated case has a private seed;
+checks restore caller Python, NumPy, CPU, and CUDA RNG state.
 
-## Trace competing losses
+Fuzz boundary-heavy shapes, values, dtypes, and layouts with `ng.check.fuzz`.
+Failures can be persisted and greedily minimized to the smallest reproducing
+case found within the configured budget.
 
-```python
-with ng.trace.losses(
-    {"classification": classification, "regularization": regularization},
-    parameters=[model.layer2.weight],
-) as trace:
-    (classification + regularization).backward()
-
-trace.report(model.layer2.weight, name="layer2.weight").print()
-```
-
-Cancellation has one documented definition:
-
-```text
-1 - ||sum(g_i)||₂ / sum(||g_i||₂)
-```
-
-It measures lost component magnitude. It does not claim that cancellation is a
-bug or identify a root cause.
-
-## Monitor tensor health
-
-```python
-with ng.guard(model, modules=["transformer.blocks.10.*"]) as monitor:
-    loss = model(batch).sum()
-    loss.backward()
-
-print(monitor.issues)
-```
-
-The Version 0.1 guard records bounded scalar metadata (min, max, mean, standard
-deviation, absolute max, zero fraction, NaN count, and Inf count). It never
-retains module outputs. Magnitude warnings require an explicit threshold, which
-keeps model-specific heuristics out of the correctness engine.
-
-Deep mode re-executes only a curated registry of numerically sensitive ATen
-operations in higher precision:
+## Monitor numerical behavior
 
 ```python
 with ng.guard(
+    model,
     mode="deep",
-    shadow_dtype=torch.float64,
-    max_relative_error=1e-3,
+    modules=["transformer.blocks.10.*"],
     operations=["aten.exp*", "aten.sum*", "aten._softmax*"],
 ) as monitor:
     loss = model(batch).sum()
@@ -95,203 +72,96 @@ with ng.guard(
 monitor.print()
 ```
 
-The dispatch engine can identify an FP16 `exp` input beyond `log(finfo.max)`
-before reporting its infinite output. Events carry metadata-only upstream IDs;
-full tensors are not retained. Standard/deep dispatch is officially eager-only.
-Light mode avoids dispatch interception.
+Light mode observes explicit/module boundaries, standard mode intercepts a
+curated set of sensitive eager ATen operations, and deep mode additionally
+compares selected operations with higher-precision shadow execution. Events
+retain bounded scalar metadata, not full activations.
 
-Precision recommendations are experiments against a copied float64 model, not
-static guesses:
-
-```python
-report = ng.precision.audit(
-    model,
-    sample_input,
-    candidate_dtypes=(torch.float16, torch.bfloat16, torch.float32),
-    max_relative_error=1e-4,
-)
-report.print()
-```
-
-The audit is bounded by `max_capture_elements`, leaves the original model
-unchanged, and does not automatically rewrite it.
-
-## Install and develop
-
-```bash
-pip install -e ".[dev]"
-pytest
-ruff check .
-mypy nablaguard
-python examples/bad_backward.py
-python examples/gradient_trace.py
-```
-
-PyTorch eager execution on CPU is the supported baseline. CUDA operations work
-where ordinary PyTorch autograd works, but this release makes no claim of full
-CUDA, `torch.compile`, distributed, Triton, replay, or bisection compatibility.
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md).
-
-## Fuzz and minimize an operator
+## Assert training contracts
 
 ```python
-strategy = ng.tensor(
-    shape=ng.shapes(ranks=(1, 2, 3), dimensions=(7, 8, 16, 17, 32)),
-    dtype=[torch.float64, torch.float32, torch.float16],
-    distribution=["normal", "tiny", "huge", "mixed_magnitude"],
-    layout=["contiguous", "transposed", "strided", "broadcasted"],
-)
+checks = [
+    ng.contracts.loss.finite(),
+    ng.contracts.gradient.norm(max=100),
+    ng.contracts.tensor.finite(module="attention.*"),
+    ng.contracts.parameter.change(min_relative=1e-8),
+    ng.contracts.training.loss_not_exploding(max_ratio=10, window=20),
+]
 
-result = ng.check.fuzz(
-    candidate=my_operator,
-    reference=reference_operator,
-    inputs=[strategy],
-    trials=100,
-    seed=81927183,
-    artifact_dir=".nabla/failures",
-)
-result.print()
+with ng.capture(model, optimizer, contracts=checks) as recorder:
+    loss = train_step()
+    recorder.record_step(loss=loss)
 ```
 
-Every failing case records its trial seed and concrete recipes. The shrinker
-re-executes each proposed shape, dtype, layout, or distribution simplification;
-it calls the result “minimal known,” because a bounded greedy search cannot
-prove global minimality.
+Contracts emit ordinary `NablaIssue` objects, can fail fast, and can invoke an
+artifact callback. Capture persists contract failures with each step.
 
-Reference-free properties can return a boolean or an `(actual, expected)` pair:
+## Explain gradients
+
+`ng.trace.losses` separates several losses at selected parameters and reports
+norms, pairwise cosines, and exact cancellation. `ng.trace.samples` computes
+bounded per-sample VJPs, ranks dominant/opposing samples, and restores model
+buffers, RNG, and existing gradients afterward.
+
+Cancellation is always
+
+```text
+1 - norm(sum_i g_i) / sum_i norm(g_i)
+```
+
+It describes lost component magnitude; it does not assign causality.
+
+## Capture, replay, and bisect
 
 ```python
-@ng.property
-def softmax_translation_invariance(x):
-    return ng.equivalent(torch.softmax(x + 3, -1), torch.softmax(x, -1))
-```
-
-Importable callables can be checked in CI with meaningful exit codes:
-
-```bash
-nabla check package.ops:my_op --reference torch:sin --shape 32 --trials 100
-nabla sanitize train.py --mode deep
-```
-
-## Capture and replay training boundaries
-
-```python
-with ng.capture(
-    model,
-    optimizer,
-    checkpoint_every=1000,
-    metadata_every=1,
-) as recorder:
-    for step, (x, y) in enumerate(loader, start=1):
-        loss = train_step(x, y)
+with ng.capture(model, optimizer, checkpoint_every=1000) as recorder:
+    for step, batch in enumerate(loader, start=1):
+        loss = train_step(batch)
         recorder.record_step(
             step=step,
             loss=loss,
-            batch_indices=batch_indices,
+            batch_indices=batch.indices,
             tensors={"layer.weight": model.layer.weight},
         )
 ```
 
-Capture stores a full state boundary at step 0 and periodically thereafter,
-plus step metadata, Python/NumPy/PyTorch RNG state, batch identity, and bounded
-tensor fingerprints. The manifest always lists determinism limitations.
+Capture records full state boundaries, RNG state, environment limitations,
+batch identity, and bounded tensor fingerprints. `ng.replay` restores the
+nearest checkpoint and reports `MATCH`, `DIVERGENCE`, or `UNVERIFIED` for each
+boundary. `ng.bisect` performs logarithmic search under an explicit monotonic
+good-to-bad assumption and labels adjacent-boundary changes as observations,
+not causes.
 
-```python
-result = ng.replay(
-    recorder.run_path,
-    model=fresh_model,
-    optimizer=fresh_optimizer,
-    step_fn=replay_one_step,
-    from_step=0,
-    to_step=500,
-)
-result.print()
-```
-
-The callback must reconstruct data from captured batch metadata and returns the
-same named tensors that were fingerprinted. Replay reports exact checksum and
-RNG matches, the first divergence, environment differences, or `UNVERIFIED`
-when the callback returns no tensors. Restoration alone is never called proof
-of determinism.
-
-## Bisect the first bad training boundary
-
-Captured scalar metadata can be searched directly:
-
-```python
-from nablaguard.bisect import metric_greater_than
-
-result = ng.bisect(
-    run_path,
-    metric_greater_than("loss", 10),
-    known_good=0,
-    known_bad=14281,
-)
-result.print()
-```
-
-Or pass `model_factory` and `step_fn` to restore the nearest checkpoint and
-replay each midpoint before applying a Python predicate to `BoundaryState`.
-Binary search assumes one monotonic good-to-bad transition; it verifies endpoint
-labels but cannot prove unobserved monotonicity in logarithmic time.
-
-Boundary diagnosis compares captured loss, trigger batch, and tensor fingerprint
-statistics at N−1 and N. Changes are labeled `OBSERVED`; causality remains
-`UNKNOWN` unless established outside this report.
+## CLI and CI reports
 
 ```bash
+nabla run train.py
+nabla run train.py --capture --format json --output run.json
+nabla sanitize train.py --mode deep
+nabla trace train.py --format html --output trace.html
+nabla check package.ops:kernel --reference package.refs:kernel --trials 100
+nabla check tests/test_kernel.py
+nabla replay .nabla/runs/run-id --model-factory app:model --step-function app:step
 nabla bisect .nabla/runs/run-id --metric loss --greater-than 10
+nabla inspect .nabla/failures/NGF-example
 ```
 
-## Analyze individual sample gradients
+Console, JSON, self-contained HTML, and JUnit XML outputs are supported. Exit
+code zero means the requested verification passed; detected issues or failed
+checks return nonzero.
 
-```python
-report = ng.trace.samples(
-    model,
-    loss_fn,
-    (inputs, targets),
-    layers=["layer4.*"],
-    sample_indices=[0, 4, 8, 12],
-    microbatch_size=4,
-    max_gradient_elements=5_000_000,
-)
-report.print()
+## Development and evidence
+
+```bash
+ruff check .
+mypy nablaguard
+pytest --cov=nablaguard --cov-report=term-missing
+python benchmarks/suite.py --output benchmark.json
 ```
 
-The report ranks sample gradient magnitude share, cosine to the selected batch
-gradient, opposing samples, nearly duplicate directions, and exact cancellation
-`1 - ||Σgᵢ||₂ / Σ||gᵢ||₂`. It does not call norm share an additive contribution.
-
-Per-sample analysis performs one VJP per selected sample and retains one flattened
-gradient vector per selected sample. NablaGuard calculates this allocation before
-the first gradient and raises if it exceeds `max_gradient_elements`. Existing
-parameter gradients, module buffers, and RNG state are restored afterward.
-
-## Verify forward-, reverse-, and higher-order derivatives
-
-Advanced checks are opt-in because each adds fresh executions:
-
-```python
-result = ng.check.operator(
-    candidate=my_kernel,
-    reference=reference,
-    inputs=[ng.tensor(shape=(17,), dtype=torch.float64, layout="strided")],
-    vjp_cotangent="random",
-    check_jvp=True,
-    check_double_backward=True,
-    check_finite_difference=True,
-    check_determinism=True,
-)
-```
-
-JVP tangents and random VJP cotangents are private-seed reproducible. Central
-finite differences verify the candidate's own analytical VJP and enforce
-`max_finite_difference_elements`. Same-RNG repeated execution distinguishes
-stateful or kernel nondeterminism from expected randomness. Unsupported
-higher-order paths are explicit failures with evidence.
-
-Any callable—including a Triton wrapper when installed separately—can be a
-candidate against a PyTorch reference. NablaGuard does not claim native Triton
-introspection. CPU eager is the supported baseline; CI smoke-tests
-`torch.compile(..., backend="eager")`, while CUDA tests run only when hardware is
-available.
+See [architecture](ARCHITECTURE.md), [roadmap](ROADMAP.md), the
+[mathematical guide](docs/math/README.md), and [measured performance
+characteristics](docs/performance.md). CUDA paths are tested only when hardware
+is available. `torch.compile(..., backend="eager")` has smoke coverage; native
+Triton introspection, distributed training, and arbitrary external state are
+outside the current correctness claim.

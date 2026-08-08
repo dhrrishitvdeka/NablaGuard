@@ -13,6 +13,22 @@ objects combine issues from checking, tracing, and sanitizing without global
 mutable state. `TensorEvent` stores scalar metadata only, and `max_events`
 bounds session memory.
 
+## Contracts and reports
+
+Contracts are explicit predicates over a `ContractContext`; they do not infer
+model-specific thresholds. A failed predicate becomes the same immutable
+`NablaIssue` used by every subsystem. Guards evaluate tensor contracts at
+observed boundaries. Capture evaluates loss, gradient, parameter, and history
+contracts after a completed step and persists their issue dictionaries beside
+the step metadata. Optional fail-fast behavior and artifact callbacks are
+caller-controlled.
+
+Every public result intended for reporting exposes `to_dict()`. JSON is the
+canonical machine representation. HTML escapes all user-derived content and is
+self-contained; JUnit maps issue identities to failing test cases. Report diffs
+compare stable diagnostic and location identity fields, not mutable message or
+evidence wording.
+
 ## Operator verification
 
 `check.operator` materializes independent leaf copies for candidate and
