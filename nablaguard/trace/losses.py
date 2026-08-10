@@ -59,8 +59,17 @@ class LossTrace:
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        # Intentionally keep this trace as the latest value in the current context.
+        # Leave the latest-trace ContextVar set so ``gradient()`` works after the
+        # with-block. Nested enter replaces the value; call ``release()`` to drop
+        # retained gradient copies when analysis is finished.
         self._token = None
+
+    def release(self) -> None:
+        """Drop retained gradient copies and clear the latest-trace handle if current."""
+
+        self.gradients.clear()
+        if _LATEST_TRACE.get() is self:
+            _LATEST_TRACE.set(None)
 
     def report(self, parameter: torch.Tensor, *, name: str | None = None) -> GradientReport:
         """Calculate exact norms, cosines, and cancellation for one parameter."""

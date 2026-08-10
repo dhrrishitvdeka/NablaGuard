@@ -38,8 +38,12 @@ def test_fingerprint_is_bounded_and_detects_content_change() -> None:
 
     assert first.sampled_elements == 32
     assert first.total_elements == 10_000
+    assert first.checksum_scope == "sampled"
+    assert first.statistics_scope == "full"
     assert first.checksum != second.checksum
     assert first.shape == (100, 100)
+    full = fingerprint(torch.arange(4, dtype=torch.float32), max_samples=32)
+    assert full.checksum_scope == "full"
 
 
 def _capture_training_run(root: Path) -> Path:

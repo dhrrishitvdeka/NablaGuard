@@ -2,21 +2,26 @@
 
 ## Unreleased
 
-- Added NGF v1 failure artifacts: versioned manifest, atomic write, completion
-  state, size budgets, private-by-default tensors, fingerprints (including
-  minimized inputs), JSON secret/path redaction, and safe inspect without
-  loading pickle data.
-- Added `nabla artifact inspect|sanitize|migrate` and aligned top-level
-  `nabla inspect` (including legacy metadata summary and migrate guidance).
-- Operator/fuzz keep failure reports when artifact writes fail; CLI validates
-  artifact policy flags with exit code 3.
-- Shared metadata redaction for capture manifests/step JSON; capture `run_id`
-  is constrained so paths cannot escape the capture root.
-- Replay `passed` requires verified `MATCH` steps only; capture clones prior
-  parameters only when a change contract needs them; light-mode statistics are
-  sample-bounded.
-- Non-interference regressions cover guard modes and capture; BugBench corpus
-  and suite benchmarks re-measured on CPU-eager (149 tests, 88% line coverage).
+- Hardened audit follow-ups for the CPU-eager baseline: shadow failures emit
+  `NG1005` / `SHADOW_UNSUPPORTED` instead of silent skips; tensor provenance
+  drops stale object ids via weak references; fingerprints record
+  `checksum_scope` (`full` | `sampled`) and `statistics_scope`.
+- Session issue lists are bounded (`max_issues`, `dropped_issues`); reports use
+  strict JSON (`normalize_json`, no `default=str`); tensors in evidence are
+  summarized without raw values; report files write atomically.
+- Advanced checks preserve input `requires_grad` (finite differences only cover
+  inputs that already require grad). Loss traces expose `release()` to drop
+  retained gradient copies after `gradient()` use.
+- Bisection verifies monotonicity on small intervals and reports
+  `NG4004` / `BISECT_NON_MONOTONIC` with `passed=false` when outcomes oscillate.
+- CLI exit taxonomy is `0` pass, `1` check-fail, `2` usage, `3` error; pytest
+  path checks map into that contract; `bisect` fails on non-monotonic results;
+  `replay` warns about pickle checkpoints and requires `--i-trust-this-run`
+  outside `.nabla/runs`.
+- Package ships `py.typed`; CI pins GitHub Actions to commit SHAs and enforces
+  coverage `fail_under = 85`.
+- Prior NGF v1, run_id containment, replay MATCH-only pass, selective capture
+  snapshots, redaction, and non-interference work remains as previously listed.
 
 ## 1.0.0 — 2026-08-09
 

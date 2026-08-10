@@ -3,6 +3,7 @@ import torch
 import nablaguard as ng
 from nablaguard.sanitize import max_ulp_difference
 from nablaguard.sanitize.numerical import compare_shadow
+from nablaguard.sanitize.shadow import REGISTRY
 
 
 def test_dispatch_detects_exp_overflow_before_output_issue() -> None:
@@ -69,6 +70,28 @@ def test_ulp_difference_for_adjacent_float32_values() -> None:
 
     assert max_ulp_difference(value, value.to(torch.float64)) == 0
     assert max_ulp_difference(value, adjacent.to(torch.float64)) == 1
+
+
+def test_shadow_failure_emits_unknown_issue_instead_of_silent_skip() -> None:
+    def broken_rule(operation, args, kwargs, dtype):
+        del operation, args, kwargs, dtype
+        raise RuntimeError("shadow backend unavailable")
+
+    REGISTRY.register("aten::exp", broken_rule)
+    try:
+        with ng.guard(
+            shadow=True,
+            operations=["aten.exp*"],
+            capture_source=False,
+        ) as monitor:
+            torch.exp(torch.tensor([1.0]))
+    finally:
+        REGISTRY.rules.pop("aten::exp", None)
+
+    unsupported = [issue for issue in monitor.issues if issue.category == "SHADOW_UNSUPPORTED"]
+    assert len(unsupported) == 1
+    assert unsupported[0].code == "NG1005"
+    assert unsupported[0].evidence["status"] == "UNKNOWN"
 
 
 def test_matching_nonfinite_shadow_values_are_not_a_precision_mismatch() -> None:

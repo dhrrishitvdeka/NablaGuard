@@ -18,6 +18,7 @@ class NablaConfig:
     absolute_tolerance: float = 1e-7
     relative_tolerance: float = 1e-5
     max_events: int = 10_000
+    max_issues: int = 10_000
     extreme_value_threshold: float | None = None
     capture_inputs: bool = False
     artifact_dir: Path | None = None

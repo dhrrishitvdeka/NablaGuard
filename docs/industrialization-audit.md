@@ -1,7 +1,8 @@
 # NablaGuard industrialization audit
 
-**Audit date:** 2026-08-09  
-**Audited revision:** `e1e5b15` (`main`)  
+**Original audit date:** 2026-08-09  
+**Re-audit date:** 2026-08-11  
+**Audited revision:** local main (v1.0.0 hardening)  
 **Scope:** public APIs, internal abstractions, events and issues, numerical tracing,
 operator verification, gradient tracing, capture and replay, bisection, contracts,
 reporting, CLI, tests, packaging, documentation, security, and performance assumptions.
@@ -9,10 +10,28 @@ reporting, CLI, tests, packaging, documentation, security, and performance assum
 ## Executive verdict
 
 CPU-eager production baseline is supported with measured unit, BugBench, and suite
-evidence (149 tests, 88% coverage, BugBench detection 1.0 on the checked-in corpus,
+evidence (**156** tests, ~88% coverage, BugBench detection 1.0 on the checked-in corpus,
 suite standard-mode ≈11.9×). NGF private-by-default artifacts, verified-only replay
 pass, selective capture snapshots, light-mode sample bounds, and non-interference
 regressions close the original P0 table for that baseline.
+
+### 2026-08-11 residual closure
+
+| Prior residual | Status after re-audit |
+|---|---|
+| Silent shadow failures | **CLOSED** — `NG1005` / `SHADOW_UNSUPPORTED` |
+| `id(tensor)` provenance reuse | **CLOSED** — weakref cleanup of producer map |
+| Advanced `_leaf` invents `requires_grad` | **CLOSED** — preserves caller flag; FD only on grad inputs |
+| Fingerprint sampling ambiguity | **CLOSED** — `checksum_scope` / `statistics_scope` fields |
+| Unbounded issue lists | **CLOSED** — `max_issues` + `dropped_issues` |
+| `default=str` JSON | **CLOSED** — strict `normalize_json` / `dumps_json` |
+| Non-atomic report writes | **CLOSED** — `atomic_write_text` |
+| Bisect always exit 0 / no mono check | **CLOSED** — `NG4004`, `passed`, CLI exit 1 |
+| Pytest exit codes leak | **CLOSED** — mapped to 0/1/3 |
+| Missing `py.typed` | **CLOSED** |
+| Mutable CI action tags | **CLOSED** — pinned commit SHAs + coverage gate |
+| Capture pickle residual | **ACCEPTED** with CLI trust warning + `--i-trust-this-run` |
+| Evidence graph / DDP / CUDA matrix | **OPEN** (deferred / experimental) |
 
 NablaGuard remains a functional PyTorch debugging library with a coherent issue type,
 operator checker, deterministic input generation, bounded events, layered checkpoints,
@@ -305,7 +324,7 @@ provenance contract must therefore include worker/rank sharding and seed evidenc
 ## Production blockers
 
 Priority is ordered by industrialization sequence and silent-evidence risk.
-Production-ready means the **CPU-eager baseline** only (149 tests, 88% coverage,
+Production-ready means the **CPU-eager baseline** only (156 tests, ~88% coverage,
 BugBench exit 0). CUDA/AMP/compile/distributed remain experimental unless noted.
 
 | Priority | Blocker | Exit evidence | Status (CPU-eager) |
@@ -314,17 +333,17 @@ BugBench exit 0). CUDA/AMP/compile/distributed remain experimental unless noted.
 | P0 | Observation non-interference is unproven | Deterministic matrix across observation-only modes | **CLOSED** — guard modes + capture regressions |
 | P0 | Light mode is not designed or measured as a low-overhead runtime | Bounded stats + measured ratios | **CLOSED** — sample bounds; light ≈1.8× on `tiny_mlp` |
 | P0 | Capture copies a full model per step | Selective parameter snapshot | **CLOSED** — snapshot only when contracts require it |
-| P0 | Raw artifacts and unrestricted pickle are unsafe defaults | NGF private-by-default, redaction, size, safe inspect | **CLOSED** for NGF; checkpoints remain **trusted-local pickle only** |
-| P0 | Operator candidate/reference isolation is insufficient | Stochastic/stateful/complex regressions | **CLOSED** — isolation + pairing tests |
+| P0 | Raw artifacts and unrestricted pickle are unsafe defaults | NGF private-by-default, redaction, size, safe inspect | **CLOSED** for NGF; checkpoints remain **trusted-local pickle only** with CLI trust gate |
+| P0 | Operator candidate/reference isolation is insufficient | Stochastic/stateful/complex regressions | **CLOSED** — isolation + pairing + requires_grad preservation |
 | P1 | No credible BugBench | Ground-truth corpus + runner metrics | **CLOSED** for checked-in corpus (detection 1.0 on fixtures) |
 | P1 | No shared evidence graph | Versioned graph across subsystems | OPEN (deferred) |
 | P1 | No real modern-execution evidence | compile/AMP/CUDA matrix | OPEN — labeled experimental |
-| P1 | CI result contract is incomplete | Exit 0–3, JSON/JUnit | PARTIAL — JSON/JUnit present; SARIF absent |
+| P1 | CI result contract is incomplete | Exit 0–3, JSON/JUnit | **CLOSED** for 0/1/2/3 + JSON/JUnit; SARIF still absent |
 | P1 | Distributed behavior is absent | DDP/FSDP | OPEN — unsupported |
 | P2 | No out-of-core data/provenance layer | Backend protocol | OPEN (deferred) |
 | P2 | No soak or self-fuzz evidence | Long-run suites | OPEN (deferred) |
 | P2 | No confirmed real-world discoveries/corpus | Licensed corpus | OPEN (deferred) |
-| P2 | Public API and persisted schemas are unstable | Manifests + migrations | PARTIAL — public API + NGF v1 stable; broader PEP 561 incomplete |
+| P2 | Public API and persisted schemas are unstable | Manifests + migrations | **PARTIAL** — public API + NGF v1 + `py.typed`; broader migrations deferred |
 
 ### Industrial release-gate assessment
 
@@ -340,8 +359,8 @@ BugBench exit 0). CUDA/AMP/compile/distributed remain experimental unless noted.
 | Triton integration | UNSUPPORTED |
 | Failure artifact compatibility and migration | **PASS** (NGF v1 inspect/sanitize/migrate) |
 | Replay validation and fidelity | **PASS** for verified MATCH; trusted checkpoints only |
-| CI exit codes and machine-readable integration | PARTIAL |
-| Security review and private defaults | **PASS** for NGF private defaults + redaction + run_id containment; residual pickle threat on capture |
+| CI exit codes and machine-readable integration | **PASS** for 0/1/2/3 + JSON/JUnit (SARIF deferred) |
+| Security review and private defaults | **PASS** for NGF private defaults + redaction + run_id containment + replay trust gate; residual pickle threat on capture |
 | Long-run stability | DEFERRED |
 | Real-world bug discoveries | DEFERRED |
 | Documented false positives and false negatives | PARTIAL; controlled-fixture caveat retained |

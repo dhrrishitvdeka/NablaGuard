@@ -78,6 +78,20 @@ def test_trace_can_discover_reachable_leaf_parameter() -> None:
     assert trace.report(parameter).components[0].norm == pytest.approx(4.0)
 
 
+def test_loss_trace_release_clears_retained_gradients() -> None:
+    parameter = torch.nn.Parameter(torch.tensor([1.0]))
+    loss = parameter.sum()
+    with ng.trace.losses({"loss": loss}, parameters=[parameter]) as trace:
+        loss.backward()
+    assert trace.gradients
+    report = ng.trace.gradient(parameter)
+    assert report.components[0].norm == pytest.approx(1.0)
+    trace.release()
+    assert trace.gradients == {}
+    with pytest.raises(RuntimeError, match="no loss trace"):
+        ng.trace.gradient(parameter)
+
+
 def test_non_scalar_loss_is_rejected() -> None:
     parameter = torch.nn.Parameter(torch.ones(2))
     with (

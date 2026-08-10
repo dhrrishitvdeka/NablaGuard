@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import weakref
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -61,6 +62,9 @@ class Guard(Session):
     _analysis_depth: int = field(default=0, init=False, repr=False)
     _module_stack: list[str] = field(default_factory=list, init=False, repr=False)
     _tensor_producers: dict[int, str] = field(default_factory=dict, init=False, repr=False)
+    _producer_refs: list[weakref.ref[torch.Tensor]] = field(
+        default_factory=list, init=False, repr=False
+    )
 
     @property
     def _inside_analysis(self) -> bool:
@@ -86,6 +90,7 @@ class Guard(Session):
         self._handles.clear()
         self._module_stack.clear()
         self._tensor_producers.clear()
+        self._producer_refs.clear()
         Session.__exit__(self, exc_type, exc, traceback)
 
     def observe(
@@ -140,7 +145,7 @@ class Guard(Session):
             },
         )
         self.emit_event(event)
-        self._tensor_producers[id(tensor)] = event.event_id
+        self._remember_producer(tensor, event.event_id)
         context = ContractContext(
             tensor=tensor,
             module_path=module_path,
@@ -274,7 +279,28 @@ class Guard(Session):
         self._analysis_depth += 1
         try:
             shadow_output = rule(operation, args, kwargs, self.shadow_dtype)
-        except (RuntimeError, TypeError, NotImplementedError):
+        except (RuntimeError, TypeError, NotImplementedError) as error:
+            self.emit_issue(
+                NablaIssue(
+                    code="NG1005",
+                    category="SHADOW_UNSUPPORTED",
+                    severity=Severity.LOW,
+                    message="Higher-precision shadow execution could not evaluate this operation.",
+                    module_path=module_path,
+                    operation=operation_name,
+                    source_location=source,
+                    evidence={
+                        "exception_type": type(error).__name__,
+                        "exception": str(error),
+                        "shadow_dtype": str(self.shadow_dtype),
+                        "status": "UNKNOWN",
+                    },
+                    suggestion=(
+                        "Treat this region as unverified for shadow precision; "
+                        "register a custom shadow rule or exclude the operation."
+                    ),
+                )
+            )
             return
         finally:
             self._analysis_depth -= 1
@@ -337,6 +363,26 @@ class Guard(Session):
                     )
                 )
 
+    def _remember_producer(self, tensor: torch.Tensor, event_id: str) -> None:
+        """Associate a live tensor with an event id; drop the map entry on GC."""
+
+        key = id(tensor)
+        self._tensor_producers[key] = event_id
+
+        def _forget(
+            _ref: weakref.ref[torch.Tensor],
+            *,
+            producer_key: int = key,
+            producers: dict[int, str] = self._tensor_producers,
+        ) -> None:
+            producers.pop(producer_key, None)
+
+        try:
+            self._producer_refs.append(weakref.ref(tensor, _forget))
+        except TypeError:
+            # Some tensor subclasses reject weak references; keep a best-effort id map.
+            pass
+
     def _operation_selected(self, overload_name: str, schema_name: str) -> bool:
         if self.operations is None:
             return True
@@ -394,6 +440,7 @@ def guard(
     cancellation_threshold: float = 0.99,
     capture_source: bool = True,
     max_events: int = 10_000,
+    max_issues: int = 10_000,
     extreme_value_threshold: float | None = None,
     contracts: Iterable[Contract] = (),
     light_sample_elements: int = 1024,
@@ -408,9 +455,12 @@ def guard(
         raise ValueError("cancellation_threshold must be in [0, 1]")
     if light_sample_elements <= 0:
         raise ValueError("light_sample_elements must be positive")
+    if max_events <= 0 or max_issues <= 0:
+        raise ValueError("max_events and max_issues must be positive")
     config = NablaConfig(
         mode=mode,
         max_events=max_events,
+        max_issues=max_issues,
         extreme_value_threshold=extreme_value_threshold,
     )
     return Guard(

@@ -10,8 +10,8 @@ dashboard dependency.
 
 Every subsystem emits immutable `NablaIssue` values. Context-local `Session`
 objects combine issues from checking, tracing, and sanitizing without global
-mutable state. `TensorEvent` stores scalar metadata only, and `max_events`
-bounds session memory.
+mutable state. `TensorEvent` stores scalar metadata only. `max_events` and
+`max_issues` bound session memory; dropped counts are reported when limits hit.
 
 ## Contracts and reports
 
@@ -90,22 +90,26 @@ data-loader metadata, and the post-step RNG digest/state. Periodic full
 checkpoints bound restoration cost while per-step metadata stays small.
 
 Fingerprints compute statistics and a SHA-256 checksum over at most a configured
-number of evenly spaced elements. Sampling non-contiguous large tensors uses
-coordinate indexing and does not first materialize a complete contiguous copy.
+number of evenly spaced elements. Each fingerprint records `checksum_scope`
+(`full` or `sampled`) and `statistics_scope`. Sampling non-contiguous large
+tensors uses coordinate indexing and does not first materialize a complete
+contiguous copy. A sampled checksum match does not prove full-tensor equality.
 
 Replay restores the nearest full checkpoint at or before the requested boundary,
 then calls user code for every intervening step. The callback is responsible for
 reconstructing data and external state from metadata. Fingerprints and RNG
-digests produce `MATCH`, `DIVERGENCE`, or `UNVERIFIED`. Trusted local checkpoint
-loading uses Python pickle through `torch.load`; untrusted run directories must
-not be replayed.
+digests produce `MATCH`, `DIVERGENCE`, or `UNVERIFIED`. `ReplayResult.passed`
+requires every requested step to be `MATCH`. Trusted local checkpoint loading
+uses Python pickle through `torch.load`; untrusted run directories must not be
+replayed.
 
 ## Training bisection and boundary diagnosis
 
 The generic search primitive verifies one known-good and one known-bad endpoint,
 then performs a logarithmic false-to-true binary search. It assumes the supplied
-predicate is monotonic; checking all unobserved steps would defeat the purpose
-of bisection.
+predicate is monotonic. After search, small intervals are fully re-checked and
+larger intervals are spot-checked; inconsistent outcomes become
+`BISECT_NON_MONOTONIC` evidence and mark the result as failed.
 
 Captured-run bisection either evaluates JSON metadata directly or constructs
 fresh model/optimizer objects for every probe, restores the nearest full

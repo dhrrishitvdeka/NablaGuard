@@ -106,7 +106,9 @@ def compare_finite_difference(
 
     if epsilon <= 0:
         raise ValueError("finite_difference_epsilon must be positive")
-    differentiable = [value for value in inputs if value.is_floating_point()]
+    differentiable = [
+        value for value in inputs if value.is_floating_point() and value.requires_grad
+    ]
     element_count = sum(value.numel() for value in differentiable)
     if element_count > max_elements:
         raise ValueError(
@@ -126,7 +128,9 @@ def compare_finite_difference(
         return (_error_comparison("finite-difference analytical gradient", error),)
     comparisons: list[Comparison] = []
     for input_index, (value, gradient) in enumerate(zip(inputs, analytical, strict=True)):
-        if not value.is_floating_point():
+        # Finite differences estimate ∂phi/∂x only for inputs that participate in
+        # autograd; inventing requires_grad would mis-model mixed differentiability.
+        if not value.is_floating_point() or not value.requires_grad:
             continue
         numerical = torch.empty(value.shape, dtype=torch.float64, device=value.device)
         flat = numerical.reshape(-1)
@@ -219,8 +223,10 @@ def _perturb(value: torch.Tensor, linear_index: int, amount: float) -> None:
 
 
 def _leaf(value: torch.Tensor) -> torch.Tensor:
+    """Clone a leaf for advanced checks without inventing requires_grad."""
+
     result = value.detach().clone(memory_format=torch.preserve_format)
-    if result.is_floating_point() or result.is_complex():
+    if value.requires_grad and (result.is_floating_point() or result.is_complex()):
         result.requires_grad_(True)
     return result
 

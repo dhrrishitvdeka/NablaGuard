@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import runpy
 import subprocess
 import sys
@@ -33,11 +32,18 @@ from nablaguard.bisect import bisect as bisect_run
 from nablaguard.bisect import metric_greater_than, metric_less_than, metric_nonfinite
 from nablaguard.check import FuzzResult, OperatorCheckResult, fuzz, operator
 from nablaguard.check.specs import TensorSpec, TensorStrategy, shapes, tensor
+from nablaguard.core.serialization import atomic_write_text, dumps_json
 from nablaguard.replay import replay
 from nablaguard.report import dumps as json_report
 from nablaguard.report import html as html_report
 from nablaguard.report import junit as junit_report
 from nablaguard.sanitize import guard
+
+# Exit taxonomy: 0 success / pass, 1 check-fail, 2 usage, 3 internal/config error.
+EXIT_OK = 0
+EXIT_FAIL = 1
+EXIT_USAGE = 2
+EXIT_ERROR = 3
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -118,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--from-step", type=int, default=0)
     replay_parser.add_argument("--to-step", type=int)
     replay_parser.add_argument("--continue-on-divergence", action="store_true")
+    replay_parser.add_argument(
+        "--i-trust-this-run",
+        action="store_true",
+        help="acknowledge that checkpoints are untrusted pickle and must only be local/trusted",
+    )
     bisect_parser = subcommands.add_parser(
         "bisect", help="locate a monotonic failure transition in captured metadata"
     )
@@ -154,30 +165,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the NablaGuard CLI."""
 
     parser = build_parser()
-    arguments, remaining = parser.parse_known_args(argv)
+    try:
+        arguments, remaining = parser.parse_known_args(argv)
+    except SystemExit as error:
+        code = error.code
+        if code is None:
+            return EXIT_OK
+        return int(code) if int(code) in {EXIT_OK, EXIT_USAGE} else EXIT_USAGE
     if remaining and arguments.command not in {"run", "sanitize", "trace"}:
         parser.error(f"unrecognized arguments: {' '.join(remaining)}")
     if arguments.command == "inspect":
         inspection = inspect_artifact(
             arguments.artifact, verify_hashes=not arguments.no_verify_hashes
         )
-        print(json.dumps(inspection.to_dict(), indent=2, sort_keys=True))
-        return 0 if inspection.valid else 1
+        print(dumps_json(inspection.to_dict()))
+        return EXIT_OK if inspection.valid else EXIT_FAIL
     if arguments.command == "artifact":
         if arguments.artifact_command == "inspect":
             inspection = inspect_artifact(
                 arguments.artifact, verify_hashes=not arguments.no_verify_hashes
             )
-            print(json.dumps(inspection.to_dict(), indent=2, sort_keys=True))
-            return 0 if inspection.valid else 1
+            print(dumps_json(inspection.to_dict()))
+            return EXIT_OK if inspection.valid else EXIT_FAIL
         if arguments.artifact_command == "sanitize":
             try:
                 sanitized = sanitize_artifact(arguments.artifact, arguments.output_root)
             except (OSError, ValueError, TypeError) as error:
                 print(f"Artifact sanitization failed: {error}", file=sys.stderr)
-                return 3
+                return EXIT_ERROR
             print(sanitized)
-            return 0
+            return EXIT_OK
         if arguments.artifact_command == "migrate":
             try:
                 migrated = migrate_legacy_artifact(
@@ -185,15 +202,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             except (OSError, ValueError, TypeError) as error:
                 print(f"Artifact migration failed: {error}", file=sys.stderr)
-                return 3
+                return EXIT_ERROR
             print(migrated)
-            return 0
+            return EXIT_OK
     if arguments.command in {"run", "sanitize", "trace"}:
         if not arguments.script.is_file():
             parser.error(f"script does not exist: {arguments.script}")
         if arguments.command == "run" and not arguments.capture:
             _execute_script(arguments.script, remaining)
-            return 0
+            return EXIT_OK
         monitor = guard(
             mode=arguments.mode,
             shadow=getattr(arguments, "shadow", False) or None,
@@ -201,7 +218,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         with monitor:
             _execute_script(arguments.script, remaining)
         _emit_report(monitor, arguments.format, arguments.output, console=monitor.format())
-        return 1 if monitor.issues else 0
+        return EXIT_FAIL if monitor.issues else EXIT_OK
     if arguments.command == "check":
         candidate_path = Path(arguments.candidate)
         if arguments.reference is None and candidate_path.suffix == ".py":
@@ -209,22 +226,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 [sys.executable, "-m", "pytest", str(candidate_path)],
                 check=False,
             )
-            return completed.returncode
+            return _map_pytest_exit(completed.returncode)
         if arguments.reference is None:
             parser.error("--reference is required for an importable callable")
-        candidate = _load_callable(arguments.candidate)
-        reference = _load_callable(arguments.reference)
-        shape = _parse_shape(arguments.shape)
-        dtype = getattr(torch, arguments.dtype)
         try:
+            candidate = _load_callable(arguments.candidate)
+            reference = _load_callable(arguments.reference)
+            shape = _parse_shape(arguments.shape)
+            dtype = getattr(torch, arguments.dtype)
             ArtifactPolicy.create(
                 raw_tensors=arguments.artifact_raw_tensors,
                 max_size=arguments.artifact_max_size,
                 max_stored_tensors=arguments.artifact_max_tensors,
             )
-        except ValueError as error:
+        except (ValueError, TypeError, ModuleNotFoundError, AttributeError) as error:
             print(f"Invalid check configuration: {error}", file=sys.stderr)
-            return 3
+            return EXIT_ERROR
         result: OperatorCheckResult | FuzzResult
         try:
             if arguments.trials == 1:
@@ -274,19 +291,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
         except ValueError as error:
             print(f"Invalid check configuration: {error}", file=sys.stderr)
-            return 3
+            return EXIT_ERROR
         _emit_report(result, arguments.format, arguments.output, console=result.format())
-        return 0 if result.passed else 1
+        return EXIT_OK if result.passed else EXIT_FAIL
     if arguments.command == "replay":
-        model_factory = _load_callable(arguments.model_factory)
-        step_function = _load_callable(arguments.step_function)
-        optimizer_factory = (
-            _load_callable(arguments.optimizer_factory) if arguments.optimizer_factory else None
-        )
-        model = model_factory()
-        if not isinstance(model, torch.nn.Module):
-            raise TypeError("model factory must return torch.nn.Module")
-        optimizer = optimizer_factory(model) if optimizer_factory else None
+        try:
+            _require_trusted_run(arguments.run, trusted=arguments.i_trust_this_run)
+            model_factory = _load_callable(arguments.model_factory)
+            step_function = _load_callable(arguments.step_function)
+            optimizer_factory = (
+                _load_callable(arguments.optimizer_factory)
+                if arguments.optimizer_factory
+                else None
+            )
+            model = model_factory()
+            if not isinstance(model, torch.nn.Module):
+                raise TypeError("model factory must return torch.nn.Module")
+            optimizer = optimizer_factory(model) if optimizer_factory else None
+        except (ValueError, TypeError, ModuleNotFoundError, AttributeError, OSError) as error:
+            print(f"Invalid replay configuration: {error}", file=sys.stderr)
+            return EXIT_ERROR
 
         def invoke_step(step: int, metadata: dict[str, Any]) -> Mapping[str, torch.Tensor] | None:
             return cast(
@@ -294,17 +318,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 step_function(model, optimizer, step, metadata),
             )
 
-        replay_result = replay(
-            arguments.run,
-            model=model,
-            optimizer=optimizer,
-            step_fn=invoke_step,
-            from_step=arguments.from_step,
-            to_step=arguments.to_step,
-            stop_on_divergence=not arguments.continue_on_divergence,
-        )
+        try:
+            replay_result = replay(
+                arguments.run,
+                model=model,
+                optimizer=optimizer,
+                step_fn=invoke_step,
+                from_step=arguments.from_step,
+                to_step=arguments.to_step,
+                stop_on_divergence=not arguments.continue_on_divergence,
+            )
+        except (ValueError, FileNotFoundError, RuntimeError) as error:
+            print(f"Replay failed: {error}", file=sys.stderr)
+            return EXIT_ERROR
         replay_result.print()
-        return 0 if replay_result.passed else 1
+        return EXIT_OK if replay_result.passed else EXIT_FAIL
     if arguments.command == "bisect":
         if arguments.greater_than is not None:
             predicate = metric_greater_than(arguments.metric, arguments.greater_than)
@@ -312,14 +340,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             predicate = metric_less_than(arguments.metric, arguments.less_than)
         else:
             predicate = metric_nonfinite(arguments.metric)
-        bisect_result = bisect_run(
-            arguments.run,
-            predicate,
-            known_good=arguments.known_good,
-            known_bad=arguments.known_bad,
-        )
+        try:
+            bisect_result = bisect_run(
+                arguments.run,
+                predicate,
+                known_good=arguments.known_good,
+                known_bad=arguments.known_bad,
+            )
+        except (ValueError, FileNotFoundError, RuntimeError) as error:
+            print(f"Bisect failed: {error}", file=sys.stderr)
+            return EXIT_ERROR
         bisect_result.print()
-        return 0
+        return EXIT_OK if bisect_result.passed else EXIT_FAIL
     if arguments.command == "benchmark" and arguments.benchmark_suite == "bugbench":
         try:
             benchmark_result = run_bugbench(
@@ -329,7 +361,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except BugBenchConfigError as error:
             print(f"Invalid BugBench configuration: {error}", file=sys.stderr)
-            return 3
+            return EXIT_ERROR
         rendered = (
             bugbench_json(benchmark_result)
             if arguments.format == "json"
@@ -338,9 +370,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.output is None:
             print(rendered)
         else:
-            arguments.output.parent.mkdir(parents=True, exist_ok=True)
-            arguments.output.write_text(rendered + "\n", encoding="utf-8")
-        return benchmark_result.exit_code
+            atomic_write_text(arguments.output, rendered)
+        return EXIT_OK if benchmark_result.exit_code == 0 else EXIT_FAIL
     if arguments.command == "benchmark" and arguments.benchmark_suite == "overhead":
         try:
             overhead_result = run_overhead_benchmark(
@@ -350,7 +381,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except OverheadConfigError as error:
             print(f"Invalid overhead benchmark configuration: {error}", file=sys.stderr)
-            return 3
+            return EXIT_ERROR
         rendered = (
             overhead_json(overhead_result)
             if arguments.format == "json"
@@ -359,11 +390,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.output is None:
             print(rendered)
         else:
-            arguments.output.parent.mkdir(parents=True, exist_ok=True)
-            arguments.output.write_text(rendered + "\n", encoding="utf-8")
-        return 0
+            atomic_write_text(arguments.output, rendered)
+        return EXIT_OK
     parser.print_help()
-    return 0
+    return EXIT_OK
 
 
 def _load_callable(target: str) -> Any:
@@ -386,6 +416,46 @@ def _parse_shape(value: str) -> tuple[int, ...]:
     if any(dimension < 0 for dimension in shape):
         raise ValueError("shape dimensions cannot be negative")
     return shape
+
+
+def _map_pytest_exit(code: int) -> int:
+    """Map pytest exit codes into NablaGuard's 0/1/2/3 contract."""
+
+    if code == 0:
+        return EXIT_OK
+    if code == 1:
+        return EXIT_FAIL
+    if code == 5:
+        # pytest: no tests collected
+        return EXIT_FAIL
+    return EXIT_ERROR
+
+
+def _require_trusted_run(run: Path, *, trusted: bool) -> None:
+    """Refuse unacknowledged pickle-based checkpoint replay."""
+
+    run_path = run.expanduser().resolve()
+    if not run_path.exists():
+        raise FileNotFoundError(f"run path does not exist: {run_path}")
+    default_root = (Path.cwd() / ".nabla" / "runs").resolve()
+    inside_default = False
+    try:
+        run_path.relative_to(default_root)
+        inside_default = True
+    except ValueError:
+        inside_default = False
+    if trusted or inside_default:
+        print(
+            "WARNING: capture checkpoints use pickle (torch.load weights_only=False). "
+            "Replay only trusted local runs produced by this process or an equivalent "
+            "trusted capture. NGF inspect never loads .pt files.",
+            file=sys.stderr,
+        )
+        return
+    raise ValueError(
+        "refusing to load capture checkpoints without --i-trust-this-run; "
+        "checkpoints are pickle-based and must not come from untrusted sources"
+    )
 
 
 def _add_report_options(parser: argparse.ArgumentParser) -> None:
@@ -425,8 +495,7 @@ def _emit_report(
     if output is None:
         print(rendered)
         return
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(rendered, encoding="utf-8")
+    atomic_write_text(output, rendered)
 
 
 if __name__ == "__main__":

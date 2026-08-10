@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from xml.etree import ElementTree
+
+from nablaguard.core.serialization import dumps_json
 
 from .json import SerializableReport
 from .normalize import issues as report_issues
@@ -32,7 +33,7 @@ def dumps(report: SerializableReport, *, suite_name: str = "nablaguard") -> str:
                 message=str(issue.get("message", category)),
                 type=category,
             )
-            failure.text = json.dumps(issue, indent=2, sort_keys=True, default=str)
+            failure.text = dumps_json(dict(issue))
     else:
         ElementTree.SubElement(suite, "testcase", name="verification")
     return ElementTree.tostring(suite, encoding="unicode", xml_declaration=True)

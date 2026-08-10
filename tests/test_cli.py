@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import torch
+
+import nablaguard as ng
 from nablaguard.cli.main import main
 
 
@@ -77,6 +80,43 @@ def test_cli_trace_passes_remaining_arguments_to_script(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert observed.read_text(encoding="utf-8") == "payload"
+
+
+def test_cli_bisect_exit_code_pass(tmp_path: Path) -> None:
+    model = torch.nn.Linear(1, 1, bias=False)
+    with ng.capture(model, root=tmp_path, run_id="cli-bisect", checkpoint_every=8) as recorder:
+        for step in range(1, 5):
+            recorder.record_step(step=step, loss=float(step))
+
+    exit_code = main(
+        [
+            "bisect",
+            str(recorder.run_path),
+            "--metric",
+            "loss",
+            "--greater-than",
+            "2",
+            "--known-good",
+            "0",
+            "--known-bad",
+            "4",
+        ]
+    )
+    assert exit_code == 0
+
+
+def test_cli_replay_requires_trust_outside_default_root(tmp_path: Path) -> None:
+    exit_code = main(
+        [
+            "replay",
+            str(tmp_path / "missing-run"),
+            "--model-factory",
+            "torch.nn:Linear",
+            "--step-function",
+            "torch:sin",
+        ]
+    )
+    assert exit_code == 3
 
 
 def test_cli_check_writes_junit(tmp_path: Path) -> None:

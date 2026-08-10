@@ -74,6 +74,13 @@ class BisectResult:
     issues: tuple[NablaIssue, ...]
     checkpoint_aware: bool
     elapsed_seconds: float
+    monotonicity_violations: tuple[int, ...] = ()
+
+    @property
+    def passed(self) -> bool:
+        """Whether a boundary was found without monotonicity violations."""
+
+        return not self.monotonicity_violations
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe report."""
@@ -88,6 +95,8 @@ class BisectResult:
             "issues": [issue.to_dict() for issue in self.issues],
             "checkpoint_aware": self.checkpoint_aware,
             "elapsed_seconds": self.elapsed_seconds,
+            "monotonicity_violations": list(self.monotonicity_violations),
+            "passed": self.passed,
         }
 
     def format(self) -> str:
@@ -121,7 +130,16 @@ class BisectResult:
                 f"{observation.label} {observation.field}: "
                 f"{observation.before!r} -> {observation.after!r}"
             )
+        if self.monotonicity_violations:
+            lines.extend(
+                [
+                    "",
+                    "Monotonicity violations:",
+                    *[f"  step {step}" for step in self.monotonicity_violations],
+                ]
+            )
         lines.extend(["", "Causality: UNKNOWN", *self.diagnosis.unknowns])
+        lines.append(f"Result: {'PASS' if self.passed else 'FAIL'}")
         return "\n".join(lines)
 
     def print(self) -> None:
@@ -216,22 +234,48 @@ def bisect(
     before = _load_metadata(run_path, search.first_bad_step - 1)
     after = _load_metadata(run_path, search.first_bad_step)
     diagnosis = diagnose_boundary(before, after, step=search.first_bad_step)
-    issue = NablaIssue(
-        code="NG4003",
-        category="FAILURE_BOUNDARY_FOUND",
-        severity=Severity.HIGH,
-        message="A monotonic predicate transitioned from good to bad between adjacent steps.",
-        evidence={
-            "known_good": known_good,
-            "known_bad": selected_bad,
-            "first_bad_step": search.first_bad_step,
-            "checkpoint_aware": checkpoint_aware,
-            "conclusion_label": "OBSERVED",
-            "causality": "UNKNOWN",
-        },
-        reproduction={"run_path": str(run_path)},
-    )
-    emit_issue(issue)
+    issues: list[NablaIssue] = [
+        NablaIssue(
+            code="NG4003",
+            category="FAILURE_BOUNDARY_FOUND",
+            severity=Severity.HIGH,
+            message=(
+                "A monotonic predicate transitioned from good to bad between adjacent steps."
+            ),
+            evidence={
+                "known_good": known_good,
+                "known_bad": selected_bad,
+                "first_bad_step": search.first_bad_step,
+                "checkpoint_aware": checkpoint_aware,
+                "conclusion_label": "OBSERVED",
+                "causality": "UNKNOWN",
+                "monotonicity_violations": list(search.monotonicity_violations),
+            },
+            reproduction={"run_path": str(run_path)},
+        )
+    ]
+    if search.monotonicity_violations:
+        issues.append(
+            NablaIssue(
+                code="NG4004",
+                category="BISECT_NON_MONOTONIC",
+                severity=Severity.HIGH,
+                message=(
+                    "Predicate outcomes are inconsistent with a single good-to-bad transition."
+                ),
+                evidence={
+                    "violations": list(search.monotonicity_violations),
+                    "first_bad_step": search.first_bad_step,
+                    "limitation": (
+                        "Binary search localizes a bracket under an assumed monotonic "
+                        "predicate; violations mean the reported first bad step is unreliable."
+                    ),
+                },
+                suggestion="Use a monotonic metric or inspect oscillating steps manually.",
+            )
+        )
+    for issue in issues:
+        emit_issue(issue)
     return BisectResult(
         run_path=run_path,
         known_good=known_good,
@@ -239,9 +283,10 @@ def bisect(
         first_bad_step=search.first_bad_step,
         probes=probes,
         diagnosis=diagnosis,
-        issues=(issue,),
+        issues=tuple(issues),
         checkpoint_aware=checkpoint_aware,
         elapsed_seconds=time.perf_counter() - started,
+        monotonicity_violations=search.monotonicity_violations,
     )
 
 

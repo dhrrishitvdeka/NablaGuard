@@ -12,7 +12,13 @@ import torch
 
 @dataclass(frozen=True, slots=True)
 class TensorFingerprint:
-    """Scalar statistics plus a deterministic bounded-content hash."""
+    """Scalar statistics plus a deterministic bounded-content hash.
+
+    ``checksum`` covers at most ``sampled_elements`` evenly spaced values. When
+    ``checksum_scope`` is ``"sampled"``, equality of checksums does not prove
+    full-tensor equality. Aggregate stats (min/max/mean/std/norm) still scan
+    finite elements of the full tensor when the dtype is floating or complex.
+    """
 
     shape: tuple[int, ...]
     dtype: str
@@ -26,6 +32,8 @@ class TensorFingerprint:
     checksum: str
     sampled_elements: int
     total_elements: int
+    checksum_scope: str = "full"
+    statistics_scope: str = "full"
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe representation."""
@@ -76,6 +84,7 @@ def fingerprint(tensor: torch.Tensor, *, max_samples: int = 4096) -> TensorFinge
         for value in (minimum, maximum, mean, std, norm):
             if not math.isfinite(value):
                 finite = False
+    sampled_count = int(sampled.numel())
     return TensorFingerprint(
         shape=tuple(detached.shape),
         dtype=str(detached.dtype),
@@ -87,8 +96,10 @@ def fingerprint(tensor: torch.Tensor, *, max_samples: int = 4096) -> TensorFinge
         norm=norm,
         finite=finite,
         checksum=checksum,
-        sampled_elements=sampled.numel(),
+        sampled_elements=sampled_count,
         total_elements=total,
+        checksum_scope="full" if sampled_count >= total else "sampled",
+        statistics_scope="full" if minimum is not None else "none",
     )
 
 

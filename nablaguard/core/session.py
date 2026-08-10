@@ -21,6 +21,7 @@ class Session:
     events: list[TensorEvent] = field(default_factory=list)
     issues: list[NablaIssue] = field(default_factory=list)
     dropped_events: int = 0
+    dropped_issues: int = 0
     _token: Token[Session | None] | None = field(default=None, init=False, repr=False)
 
     def __enter__(self) -> Session:
@@ -41,8 +42,11 @@ class Session:
         self.events.append(event)
 
     def emit_issue(self, issue: NablaIssue) -> None:
-        """Add an issue to this session."""
+        """Add an issue while enforcing the configured issue bound."""
 
+        if len(self.issues) >= self.config.max_issues:
+            self.dropped_issues += 1
+            return
         self.issues.append(issue)
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,10 +56,13 @@ class Session:
             "issues": [issue.to_dict() for issue in self.issues],
             "events": [event.to_dict() for event in self.events],
             "dropped_events": self.dropped_events,
+            "dropped_issues": self.dropped_issues,
             "summary": {
                 "issue_count": len(self.issues),
                 "event_count": len(self.events),
-                "passed": not self.issues,
+                "dropped_events": self.dropped_events,
+                "dropped_issues": self.dropped_issues,
+                "passed": not self.issues and self.dropped_issues == 0,
             },
         }
 

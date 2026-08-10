@@ -76,8 +76,22 @@ def normalize_json(value: Any) -> Any:
         if math.isinf(value):
             return "Infinity" if value > 0 else "-Infinity"
         return value
+    if isinstance(value, Path):
+        return redact_string(str(value))
     if isinstance(value, Mapping):
         return {str(key): normalize_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [normalize_json(item) for item in value]
+    # Summarize torch tensors without importing torch at module load time or
+    # embedding raw values (privacy + schema strictness).
+    module_name = type(value).__module__
+    if module_name.startswith("torch") and type(value).__name__ == "Tensor":
+        return {
+            "_type": "torch.Tensor",
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+            "device": str(value.device),
+            "requires_grad": bool(value.requires_grad),
+            "numel": int(value.numel()),
+        }
     raise TypeError(f"metadata contains unsupported value type: {type(value).__name__}")

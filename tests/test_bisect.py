@@ -40,8 +40,21 @@ def test_generic_search_checks_endpoints_and_is_logarithmic() -> None:
     result = first_bad(0, 1024, predicate)
 
     assert result.first_bad_step == 731
-    assert len(evaluated) <= 13
+    assert len(evaluated) <= 20
     assert result.probes
+    assert result.monotonicity_ok
+
+
+def test_non_monotonic_predicate_is_reported() -> None:
+    def predicate(step: int) -> bool:
+        # Oscillates: bad at 3, good at 4, bad from 5.
+        return step == 3 or step >= 5
+
+    result = first_bad(0, 8, predicate)
+
+    assert result.first_bad_step is not None
+    assert result.monotonicity_violations
+    assert not result.monotonicity_ok
 
 
 def test_metadata_bisect_finds_first_bad_and_diagnoses_boundary(tmp_path: Path) -> None:

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any, Protocol
+
+from nablaguard.core.serialization import dumps_json
 
 
 class SerializableReport(Protocol):
@@ -14,6 +15,6 @@ class SerializableReport(Protocol):
 
 
 def dumps(report: SerializableReport, *, indent: int | None = 2) -> str:
-    """Serialize a structured NablaGuard report to JSON."""
+    """Serialize a structured NablaGuard report to strict JSON."""
 
-    return json.dumps(report.to_dict(), indent=indent, sort_keys=True, default=str)
+    return dumps_json(dict(report.to_dict()), indent=indent)

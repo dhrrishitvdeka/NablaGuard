@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import html
-import json
 from collections.abc import Mapping
 from typing import Any
+
+from nablaguard.core.serialization import dumps_json
 
 from .json import SerializableReport
 from .normalize import issues as report_issues
@@ -19,7 +20,7 @@ def render(report: SerializableReport, *, title: str = "NablaGuard report") -> s
     cards = "".join(_issue_card(issue) for issue in issues)
     if not cards:
         cards = '<section class="pass"><h2>PASS</h2><p>No issues were reported.</p></section>'
-    raw = html.escape(json.dumps(data, indent=2, sort_keys=True, default=str))
+    raw = html.escape(dumps_json(data))
     safe_title = html.escape(title)
     return f"""<!doctype html>
 <html lang="en">
@@ -45,7 +46,7 @@ def _issue_card(issue: Mapping[str, Any]) -> str:
     category = html.escape(str(issue.get("category", "ISSUE")))
     message = html.escape(str(issue.get("message", "")))
     severity = html.escape(str(issue.get("severity", "unknown")))
-    evidence = html.escape(json.dumps(issue.get("evidence", {}), indent=2, default=str))
+    evidence = html.escape(dumps_json(issue.get("evidence", {})))
     suggestion = issue.get("suggestion")
     suggestion_html = (
         f"<dt>Suggestion</dt><dd>{html.escape(str(suggestion))}</dd>" if suggestion else ""
