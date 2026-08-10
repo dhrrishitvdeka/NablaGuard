@@ -33,6 +33,21 @@ regressions close the original P0 table for that baseline.
 | Capture pickle residual | **ACCEPTED** with CLI trust warning + `--i-trust-this-run` |
 | Evidence graph / DDP / CUDA matrix | **OPEN** (deferred / experimental) |
 
+### Residual follow-up track (branch / PR)
+
+From a clean re-audit of `4337485`, these items remain or are addressed on the
+residual follow-up branch:
+
+| ID | Residual | Follow-up status |
+|---|---|---|
+| R1 | Trusted-local pickle for capture/replay | Accepted; CLI trust gate remains |
+| R2 | Free-function isolation is passthrough | **Improved** — operator metadata reports `candidate_isolation` / `reference_isolation` and limitation text |
+| R3 | Private `TorchDispatchMode` | OPEN — experimental path only |
+| R4 | Sampled fingerprint equality | Accepted; `checksum_scope` labels evidence |
+| R5 | Shadow threshold was abs AND rel | **Improved** — `atol + rtol * |ref|` worst-element proxy (allclose-style) |
+| R6 | Mono verify only for span ≤ 32 | **Improved** — full scan to 128; denser sampling on larger spans |
+| R7–R17 | Double-backward scope, broad excepts, CI matrix, SARIF, etc. | OPEN / deferred |
+
 NablaGuard remains a functional PyTorch debugging library with a coherent issue type,
 operator checker, deterministic input generation, bounded events, layered checkpoints,
 and a broad unit-test foundation. CUDA, AMP, BF16, Inductor, DDP, FSDP, Triton,

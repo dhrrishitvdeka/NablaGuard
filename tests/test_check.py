@@ -43,6 +43,26 @@ def test_correct_operator_passes_forward_and_backward() -> None:
 
     assert result.passed
     assert result.issues == ()
+    assert result.metadata["candidate_isolation"] == "passthrough"
+    assert result.metadata["isolation_limitation"] is not None
+
+
+def test_module_isolation_is_reported_as_module_clone() -> None:
+    module = torch.nn.Linear(2, 2, bias=False, dtype=torch.float64)
+    with torch.no_grad():
+        module.weight.copy_(torch.eye(2, dtype=torch.float64))
+
+    result = ng.check.operator(
+        candidate=module,
+        reference=module,
+        inputs=[ng.tensor(shape=(3, 2), dtype=torch.float64)],
+        check_backward=False,
+    )
+
+    assert result.passed
+    assert result.metadata["candidate_isolation"] == "module_clone"
+    assert result.metadata["reference_isolation"] == "module_clone"
+    assert result.metadata["isolation_limitation"] is None
 
 
 def test_forward_mismatch_reports_precise_worst_element() -> None:

@@ -35,6 +35,8 @@ def test_shadow_finds_unstable_float32_sum() -> None:
     instability = [issue for issue in monitor.issues if issue.category == "NUMERICAL_INSTABILITY"]
     assert len(instability) == 1
     assert instability[0].evidence["max_absolute_error"] == 1.0
+    assert "combined_budget" in instability[0].evidence
+    assert "atol + rtol" in instability[0].evidence["criterion"]
 
 
 def test_sum_cancellation_metric_is_exactly_documented() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Literal, TypeVar
 
@@ -70,18 +70,32 @@ def first_bad(
             good = midpoint
     violations: list[int] = []
     if verify_probes:
-        # Binary search alone cannot prove monotonicity. Re-check every step in
-        # small intervals, otherwise spot-check the claimed good/bad regions.
-        if known_bad - known_good <= 32:
-            check_steps = range(known_good, known_bad + 1)
+        # Binary search alone cannot prove monotonicity. Fully re-check modest
+        # intervals; for larger spans, sample the claimed good/bad regions more
+        # densely than the search path alone.
+        span = known_bad - known_good
+        if span <= 128:
+            check_steps: Iterable[int] = range(known_good, known_bad + 1)
         else:
-            check_steps = {
+            samples = {
                 known_good,
                 max(known_good, bad - 1),
                 bad,
                 known_bad,
                 good + (bad - good) // 2,
             }
+            # Extra probes in the good region and bad region (up to 8 each).
+            for region_start, region_end in (
+                (known_good, max(known_good, bad - 1)),
+                (bad, known_bad),
+            ):
+                width = region_end - region_start
+                if width <= 0:
+                    continue
+                count = min(8, width + 1)
+                for index in range(count):
+                    samples.add(region_start + (width * index) // max(count - 1, 1))
+            check_steps = samples
         for step in check_steps:
             if step in outcomes:
                 failed = outcomes[step]

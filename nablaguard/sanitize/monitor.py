@@ -309,9 +309,22 @@ class Guard(Session):
             if not real_tensor.is_floating_point() or not shadow_tensor.is_floating_point():
                 continue
             comparison = compare_shadow(real_tensor, shadow_tensor)
+            # Match torch.allclose style: |a-b| > atol + rtol*|b| on the worst element.
+            # Reconstruct a reference magnitude proxy from max abs/rel when relative > 0.
+            if (
+                comparison.max_relative_error > 0
+                and comparison.max_relative_error != float("inf")
+            ):
+                reference_scale = (
+                    comparison.max_absolute_error / comparison.max_relative_error
+                )
+            else:
+                reference_scale = 0.0
+            combined_budget = (
+                self.max_absolute_error + self.max_relative_error * reference_scale
+            )
             unstable = comparison.finite_mismatch_count > 0 or (
-                comparison.max_absolute_error > self.max_absolute_error
-                and comparison.max_relative_error > self.max_relative_error
+                comparison.max_absolute_error > combined_budget
             )
             if unstable:
                 self.emit_issue(
@@ -331,6 +344,8 @@ class Guard(Session):
                             "shadow_dtype": str(self.shadow_dtype),
                             "absolute_tolerance": self.max_absolute_error,
                             "relative_tolerance": self.max_relative_error,
+                            "combined_budget": combined_budget,
+                            "criterion": "abs > atol + rtol * |ref| (worst-element proxy)",
                         },
                         suggestion=(
                             "Confirm the error budget and consider promoting only this operation."

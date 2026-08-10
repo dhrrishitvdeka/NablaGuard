@@ -40,7 +40,8 @@ def test_generic_search_checks_endpoints_and_is_logarithmic() -> None:
     result = first_bad(0, 1024, predicate)
 
     assert result.first_bad_step == 731
-    assert len(evaluated) <= 20
+    # log probes + denser mono re-check samples for large spans
+    assert len(evaluated) <= 40
     assert result.probes
     assert result.monotonicity_ok
 

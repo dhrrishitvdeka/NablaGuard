@@ -22,7 +22,7 @@ from .advanced import (
 )
 from .artifacts import write_failure_artifact
 from .compare import compare_tensors
-from .isolation import isolated_callable
+from .isolation import isolation_kind, isolated_callable
 from .results import Comparison, OperatorCheckResult
 from .specs import TensorSpec
 
@@ -202,6 +202,17 @@ def _operator_impl(
             "input_strides": [list(value.stride()) for value in originals],
             "input_requires_grad": [value.requires_grad for value in originals],
             "vjp_cotangent": vjp_cotangent,
+            "candidate_isolation": isolation_kind(candidate),
+            "reference_isolation": isolation_kind(reference),
+            "isolation_limitation": (
+                None
+                if isolation_kind(candidate) == "module_clone"
+                and isolation_kind(reference) == "module_clone"
+                else (
+                    "Free functions and closures are not deep-copied; external mutable "
+                    "state can interfere between candidate and reference evaluations."
+                )
+            ),
         },
     )
     if not result.passed and artifact_dir is not None:

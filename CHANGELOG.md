@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Residual audit follow-ups: shadow instability uses an allclose-style
+  `atol + rtol * |ref|` budget; operator results report
+  `candidate_isolation` / `reference_isolation` (module clone vs passthrough);
+  bisection fully re-checks spans up to 128 steps and samples larger spans more
+  densely for monotonicity violations.
 - Hardened audit follow-ups for the CPU-eager baseline: shadow failures emit
   `NG1005` / `SHADOW_UNSUPPORTED` instead of silent skips; tensor provenance
   drops stale object ids via weak references; fingerprints record
