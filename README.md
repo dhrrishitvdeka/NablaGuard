@@ -16,9 +16,12 @@ replaying training state, and bisecting the first bad step. Its diagnostics are
 computed algorithmically and carry stable issue codes, evidence, and explicit
 limitations.
 
-Version 1.0 provides a stable public API and a tested CPU-eager baseline.
-Hardware-conditional and external-project scope is stated explicitly rather
-than implied by the version number.
+Version 1.0 provides a stable public API and a **production-ready CPU-eager
+baseline** (operator checks, sanitizer, capture/replay, contracts, NGF failure
+artifacts, BugBench on the checked-in corpus). CUDA, AMP, `torch.compile`
+(Inductor), multi-GPU distributed training, and Triton internals remain
+**experimental or unsupported** until measured evidence is added—see
+[docs/compatibility.md](docs/compatibility.md).
 
 | Verify | Observe | Reproduce | Explain |
 |:--|:--|:--|:--|
@@ -79,6 +82,36 @@ checks restore caller Python, NumPy, CPU, and CUDA RNG state.
 Fuzz boundary-heavy shapes, values, dtypes, and layouts with `ng.check.fuzz`.
 Failures can be persisted and greedily minimized to the smallest reproducing
 case found within the configured budget.
+
+## Failure artifacts (NGF v1)
+
+Operator and fuzz failures can write a versioned **NGF** directory when
+`artifact_dir` is set. Artifacts are **private by default**: issue metadata,
+bounded tensor fingerprints, environment, and a safe `reproduction.py` are
+stored; raw `.pt` tensors require an explicit opt-in.
+
+```python
+result = ng.check.operator(
+    candidate=WrongSquare.apply,
+    reference=lambda x: x.square(),
+    inputs=[ng.tensor(shape=(32,), dtype=torch.float64)],
+    artifact_dir="artifacts",
+    # artifact_raw_tensors=True,  # opt-in only
+    # artifact_max_size="50MB",
+)
+```
+
+```bash
+nabla inspect artifacts/NGF-...
+nabla artifact inspect artifacts/NGF-... --no-verify-hashes
+nabla artifact sanitize artifacts/NGF-... --output-root shareable/
+nabla artifact migrate legacy-dir/ --output-root migrated/
+```
+
+Inspection validates manifests and file hashes without loading pickle tensors.
+Sanitize produces a new metadata-only copy (fingerprints preserved, raw tensors
+omitted). Legacy `metadata.json` artifacts are reported as `LEGACY` and can be
+migrated without `torch.load`.
 
 ## Monitor numerical behavior
 

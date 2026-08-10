@@ -84,7 +84,14 @@ def test_fuzz_finds_and_minimizes_shape_dependent_failure(tmp_path: Path) -> Non
     assert failure.seed >= 0
     assert failure.minimal_specs[0].shape == (8,)
     assert failure.artifact_path is not None
-    assert (failure.artifact_path / "minimized_inputs.pt").is_file()
+    assert failure.artifact_error is None
+    assert (failure.artifact_path / "manifest.json").is_file()
+    assert (failure.artifact_path / "fingerprints.json").is_file()
+    # Private-by-default: no raw tensors on disk.
+    assert not (failure.artifact_path / "inputs" / "minimized_inputs.pt").exists()
+    assert not (failure.artifact_path / "inputs" / "inputs.pt").exists()
+    fingerprints = (failure.artifact_path / "fingerprints.json").read_text(encoding="utf-8")
+    assert "minimized[0]" in fingerprints
     assert "Minimal known failing shapes" in result.format()
 
 

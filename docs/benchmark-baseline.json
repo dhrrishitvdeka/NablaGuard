@@ -26,19 +26,19 @@
     "trials_per_run": 50
   },
   "overhead": {
-    "baseline_median_seconds": 0.0003754999997909181,
+    "baseline_median_seconds": 0.00040219999937107787,
     "gpu_note": "CUDA unavailable; GPU memory overhead not measured",
     "gpu_peak_memory_overhead_bytes": null,
     "iterations": 20,
     "repeats": 10,
-    "standard_median_seconds": 0.0044836500001110835,
-    "standard_runtime_ratio": 11.940479367796597
+    "standard_median_seconds": 0.004802000000381668,
+    "standard_runtime_ratio": 11.939333684461907
   },
   "platform": "Windows-11-10.0.26200-SP0",
-  "python_version": "3.12.13",
+  "python_version": "3.13.14",
   "replay": {
     "accuracy": 1.0,
-    "elapsed_seconds": 0.021295599999575643,
+    "elapsed_seconds": 0.0346510000017588,
     "matched_steps": 20,
     "total_steps": 20
   },

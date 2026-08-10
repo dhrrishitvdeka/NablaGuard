@@ -15,6 +15,12 @@ from typing import Any, cast
 import torch
 
 from nablaguard import __version__
+from nablaguard.artifact import (
+    ArtifactPolicy,
+    inspect_artifact,
+    migrate_legacy_artifact,
+    sanitize_artifact,
+)
 from nablaguard.benchmark import (
     BugBenchConfigError,
     OverheadConfigError,
@@ -42,8 +48,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"NablaGuard {__version__}")
     subcommands = parser.add_subparsers(dest="command")
-    inspect_parser = subcommands.add_parser("inspect", help="inspect a failure artifact")
+    inspect_parser = subcommands.add_parser(
+        "inspect",
+        help="inspect a failure artifact (alias of `artifact inspect`)",
+    )
     inspect_parser.add_argument("artifact", type=Path)
+    inspect_parser.add_argument("--no-verify-hashes", action="store_true")
+    artifact_parser = subcommands.add_parser("artifact", help="inspect and sanitize NGF artifacts")
+    artifact_commands = artifact_parser.add_subparsers(dest="artifact_command", required=True)
+    artifact_inspect = artifact_commands.add_parser("inspect", help="validate an NGF artifact")
+    artifact_inspect.add_argument("artifact", type=Path)
+    artifact_inspect.add_argument("--no-verify-hashes", action="store_true")
+    artifact_sanitize = artifact_commands.add_parser(
+        "sanitize", help="create a new metadata-only sanitized NGF artifact"
+    )
+    artifact_sanitize.add_argument("artifact", type=Path)
+    artifact_sanitize.add_argument("--output-root", type=Path)
+    artifact_migrate = artifact_commands.add_parser(
+        "migrate", help="migrate legacy metadata without loading tensor pickle files"
+    )
+    artifact_migrate.add_argument("artifact", type=Path)
+    artifact_migrate.add_argument("--output-root", type=Path, required=True)
     run_parser = subcommands.add_parser("run", help="run a Python script with optional monitoring")
     run_parser.add_argument("script", type=Path)
     run_parser.add_argument("--capture", action="store_true", help="capture a numerical report")
@@ -65,6 +90,9 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--trials", type=int, default=1)
     check_parser.add_argument("--seed", type=int, default=81927183)
     check_parser.add_argument("--artifact-dir", type=Path)
+    check_parser.add_argument("--artifact-raw-tensors", action="store_true")
+    check_parser.add_argument("--artifact-max-size", default="500MB")
+    check_parser.add_argument("--artifact-max-tensors", type=int, default=16)
     check_parser.add_argument("--random-vjp", action="store_true")
     check_parser.add_argument("--jvp", action="store_true")
     check_parser.add_argument("--double-backward", action="store_true")
@@ -130,11 +158,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     if remaining and arguments.command not in {"run", "sanitize", "trace"}:
         parser.error(f"unrecognized arguments: {' '.join(remaining)}")
     if arguments.command == "inspect":
-        metadata_path = arguments.artifact / "metadata.json"
-        if not metadata_path.is_file():
-            parser.error(f"not a NablaGuard artifact: {arguments.artifact}")
-        print(json.dumps(json.loads(metadata_path.read_text(encoding="utf-8")), indent=2))
-        return 0
+        inspection = inspect_artifact(
+            arguments.artifact, verify_hashes=not arguments.no_verify_hashes
+        )
+        print(json.dumps(inspection.to_dict(), indent=2, sort_keys=True))
+        return 0 if inspection.valid else 1
+    if arguments.command == "artifact":
+        if arguments.artifact_command == "inspect":
+            inspection = inspect_artifact(
+                arguments.artifact, verify_hashes=not arguments.no_verify_hashes
+            )
+            print(json.dumps(inspection.to_dict(), indent=2, sort_keys=True))
+            return 0 if inspection.valid else 1
+        if arguments.artifact_command == "sanitize":
+            try:
+                sanitized = sanitize_artifact(arguments.artifact, arguments.output_root)
+            except (OSError, ValueError, TypeError) as error:
+                print(f"Artifact sanitization failed: {error}", file=sys.stderr)
+                return 3
+            print(sanitized)
+            return 0
+        if arguments.artifact_command == "migrate":
+            try:
+                migrated = migrate_legacy_artifact(
+                    arguments.artifact, arguments.output_root
+                )
+            except (OSError, ValueError, TypeError) as error:
+                print(f"Artifact migration failed: {error}", file=sys.stderr)
+                return 3
+            print(migrated)
+            return 0
     if arguments.command in {"run", "sanitize", "trace"}:
         if not arguments.script.is_file():
             parser.error(f"script does not exist: {arguments.script}")
@@ -163,46 +216,65 @@ def main(argv: Sequence[str] | None = None) -> int:
         reference = _load_callable(arguments.reference)
         shape = _parse_shape(arguments.shape)
         dtype = getattr(torch, arguments.dtype)
+        try:
+            ArtifactPolicy.create(
+                raw_tensors=arguments.artifact_raw_tensors,
+                max_size=arguments.artifact_max_size,
+                max_stored_tensors=arguments.artifact_max_tensors,
+            )
+        except ValueError as error:
+            print(f"Invalid check configuration: {error}", file=sys.stderr)
+            return 3
         result: OperatorCheckResult | FuzzResult
-        if arguments.trials == 1:
-            result = operator(
-                candidate=candidate,
-                reference=reference,
-                inputs=[TensorSpec(shape, dtype)],
-                seed=arguments.seed,
-                vjp_cotangent="random" if arguments.random_vjp else "ones",
-                check_jvp=arguments.jvp,
-                check_double_backward=arguments.double_backward,
-                check_finite_difference=arguments.finite_difference,
-                check_determinism=arguments.determinism,
-                artifact_dir=arguments.artifact_dir,
-            )
-        else:
-            if any(
-                (
-                    arguments.random_vjp,
-                    arguments.jvp,
-                    arguments.double_backward,
-                    arguments.finite_difference,
-                    arguments.determinism,
+        try:
+            if arguments.trials == 1:
+                result = operator(
+                    candidate=candidate,
+                    reference=reference,
+                    inputs=[TensorSpec(shape, dtype)],
+                    seed=arguments.seed,
+                    vjp_cotangent="random" if arguments.random_vjp else "ones",
+                    check_jvp=arguments.jvp,
+                    check_double_backward=arguments.double_backward,
+                    check_finite_difference=arguments.finite_difference,
+                    check_determinism=arguments.determinism,
+                    artifact_dir=arguments.artifact_dir,
+                    artifact_raw_tensors=arguments.artifact_raw_tensors,
+                    artifact_max_size=arguments.artifact_max_size,
+                    artifact_max_tensors=arguments.artifact_max_tensors,
                 )
-            ):
-                parser.error("advanced derivative flags currently require --trials 1")
-            strategy = tensor(
-                shape=shapes(shape),
-                dtype=[dtype],
-                distribution=["normal", "zeros", "ones", "mixed_magnitude"],
-                layout=["contiguous", "transposed", "strided"],
-            )
-            assert isinstance(strategy, TensorStrategy)
-            result = fuzz(
-                candidate=candidate,
-                reference=reference,
-                inputs=[strategy],
-                trials=arguments.trials,
-                seed=arguments.seed,
-                artifact_dir=arguments.artifact_dir,
-            )
+            else:
+                if any(
+                    (
+                        arguments.random_vjp,
+                        arguments.jvp,
+                        arguments.double_backward,
+                        arguments.finite_difference,
+                        arguments.determinism,
+                    )
+                ):
+                    parser.error("advanced derivative flags currently require --trials 1")
+                strategy = tensor(
+                    shape=shapes(shape),
+                    dtype=[dtype],
+                    distribution=["normal", "zeros", "ones", "mixed_magnitude"],
+                    layout=["contiguous", "transposed", "strided"],
+                )
+                assert isinstance(strategy, TensorStrategy)
+                result = fuzz(
+                    candidate=candidate,
+                    reference=reference,
+                    inputs=[strategy],
+                    trials=arguments.trials,
+                    seed=arguments.seed,
+                    artifact_dir=arguments.artifact_dir,
+                    artifact_raw_tensors=arguments.artifact_raw_tensors,
+                    artifact_max_size=arguments.artifact_max_size,
+                    artifact_max_tensors=arguments.artifact_max_tensors,
+                )
+        except ValueError as error:
+            print(f"Invalid check configuration: {error}", file=sys.stderr)
+            return 3
         _emit_report(result, arguments.format, arguments.output, console=result.format())
         return 0 if result.passed else 1
     if arguments.command == "replay":

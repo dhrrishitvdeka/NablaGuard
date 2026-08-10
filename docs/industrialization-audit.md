@@ -8,20 +8,22 @@ reporting, CLI, tests, packaging, documentation, security, and performance assum
 
 ## Executive verdict
 
-NablaGuard is a functional PyTorch debugging library with a coherent issue type, a
-useful custom-operator checker, deterministic input generation, bounded event count,
-layered checkpoints, and an unusually broad unit-test foundation for its size. It is
-not yet production-grade ML correctness infrastructure.
+CPU-eager production baseline is supported with measured unit, BugBench, and suite
+evidence (149 tests, 88% coverage, BugBench detection 1.0 on the checked-in corpus,
+suite standard-mode ≈11.9×). NGF private-by-default artifacts, verified-only replay
+pass, selective capture snapshots, light-mode sample bounds, and non-interference
+regressions close the original P0 table for that baseline.
 
-The distinction is evidence-based. The checked-in benchmark measures standard-mode
-instrumentation at **11.94x** the uninstrumented runtime on one tiny CPU fixture; light
-mode has no representative overhead measurements. Capture clones every named
-parameter before the run and after every recorded step. Replay considers a run passed
-when every step is `UNVERIFIED`. CUDA, AMP, BF16, Inductor, DDP, FSDP, Triton,
-activation checkpointing, privacy controls, artifact migrations, and long-run boundedness
-do not have sufficient test evidence.
+NablaGuard remains a functional PyTorch debugging library with a coherent issue type,
+operator checker, deterministic input generation, bounded events, layered checkpoints,
+and a broad unit-test foundation. CUDA, AMP, BF16, Inductor, DDP, FSDP, Triton,
+activation checkpointing, and long-run soak still lack production evidence and are
+explicitly experimental/unsupported.
 
-The published `v1.0.0` tag is therefore a functional baseline, not evidence that the
+Historical note: the original audit of `e1e5b15` correctly rejected an unproven
+“fully industrial” claim. Later hardening closed CPU-eager P0s without upgrading
+experimental hardware paths. The published `v1.0.0` tag was a functional baseline;
+current `main` is evidence that the
 industrial release gates below have passed. Semantic versions cannot be rolled back.
 Until the gates are satisfied, project documentation and package metadata must not
 describe NablaGuard as production-ready. Backward-compatible hardening can ship in
@@ -302,50 +304,52 @@ provenance contract must therefore include worker/rank sharding and seed evidenc
 
 ## Production blockers
 
-The following gates block a production-ready claim. Priority is ordered by the user's
-industrialization sequence and by the risk of silently producing incorrect evidence.
+Priority is ordered by industrialization sequence and silent-evidence risk.
+Production-ready means the **CPU-eager baseline** only (149 tests, 88% coverage,
+BugBench exit 0). CUDA/AMP/compile/distributed remain experimental unless noted.
 
-| Priority | Blocker | Exit evidence |
-|---|---|---|
-| P0 | Replay can pass without verified observables | L0–L4 fidelity model, negative tests, and no Boolean pass for L0/unverified runs |
-| P0 | Observation non-interference is unproven | deterministic workload matrix comparing loss, gradients, parameters, optimizer, buffers, and RNG with every observation-only mode |
-| P0 | Light mode is not designed or measured as a low-overhead runtime | representative CPU/CUDA benchmarks, explicit sync/copy accounting, bounded policies, and honest target-specific results |
-| P0 | Capture copies a full model per step | selective bounded change evidence and long-run memory/runtime tests |
-| P0 | Raw artifacts and unrestricted pickle are unsafe defaults | versioned NGF, raw opt-in, redaction, safe inspect path, size limits, threat model, malformed-artifact tests |
-| P0 | Operator candidate/reference isolation is insufficient | stochastic, stateful, complex, mixed-requires-grad, aliasing, and internal-error regression tests |
-| P1 | No credible BugBench | category fixtures with ground truth, reproducible runner, honest detection/localization/diagnostic/overhead/replay metrics, documented misses |
-| P1 | No shared evidence graph | versioned nodes/edges and migrations consumed by every major subsystem |
-| P1 | No real modern-execution evidence | eager/compile/both CLI plus AOTAutograd, Inductor, AMP, CUDA, custom-op and optional Triton integration suites |
-| P1 | CI result contract is incomplete | stable exit codes 0–3, JSON/JUnit/SARIF schemas, internal-error separation, GitHub Actions examples |
-| P1 | Distributed behavior is absent | CPU multiprocess DDP, protocol tests, optional multi-GPU DDP/FSDP, per-rank aggregation and divergence localization |
-| P2 | No out-of-core data/provenance layer | decoupled backend protocol, streaming/projection/pushdown tests, reproducible row/shard/batch/augmentation identity |
-| P2 | No soak or self-fuzz evidence | 10k-step, 100k-event, artifact-volume, streamed-data, multiprocess and malformed-state suites with leak checks |
-| P2 | No confirmed real-world discoveries/corpus | licensed corpus metadata, manually verified minimized reproductions, upstream status, regression tests |
-| P2 | Public API and persisted schemas are unstable | public/private manifest, deprecations, PEP 561 typing, schema validators/migrations, compatibility tests |
+| Priority | Blocker | Exit evidence | Status (CPU-eager) |
+|---|---|---|---|
+| P0 | Replay can pass without verified observables | No Boolean pass for L0/unverified runs; negative tests | **CLOSED** — `passed` requires all `MATCH` |
+| P0 | Observation non-interference is unproven | Deterministic matrix across observation-only modes | **CLOSED** — guard modes + capture regressions |
+| P0 | Light mode is not designed or measured as a low-overhead runtime | Bounded stats + measured ratios | **CLOSED** — sample bounds; light ≈1.8× on `tiny_mlp` |
+| P0 | Capture copies a full model per step | Selective parameter snapshot | **CLOSED** — snapshot only when contracts require it |
+| P0 | Raw artifacts and unrestricted pickle are unsafe defaults | NGF private-by-default, redaction, size, safe inspect | **CLOSED** for NGF; checkpoints remain **trusted-local pickle only** |
+| P0 | Operator candidate/reference isolation is insufficient | Stochastic/stateful/complex regressions | **CLOSED** — isolation + pairing tests |
+| P1 | No credible BugBench | Ground-truth corpus + runner metrics | **CLOSED** for checked-in corpus (detection 1.0 on fixtures) |
+| P1 | No shared evidence graph | Versioned graph across subsystems | OPEN (deferred) |
+| P1 | No real modern-execution evidence | compile/AMP/CUDA matrix | OPEN — labeled experimental |
+| P1 | CI result contract is incomplete | Exit 0–3, JSON/JUnit | PARTIAL — JSON/JUnit present; SARIF absent |
+| P1 | Distributed behavior is absent | DDP/FSDP | OPEN — unsupported |
+| P2 | No out-of-core data/provenance layer | Backend protocol | OPEN (deferred) |
+| P2 | No soak or self-fuzz evidence | Long-run suites | OPEN (deferred) |
+| P2 | No confirmed real-world discoveries/corpus | Licensed corpus | OPEN (deferred) |
+| P2 | Public API and persisted schemas are unstable | Manifests + migrations | PARTIAL — public API + NGF v1 stable; broader PEP 561 incomplete |
 
 ### Industrial release-gate assessment
 
-| Required gate | Status at audited revision |
+| Required gate | Status (current main) |
 |---|---|
-| Stable public API | PARTIAL |
-| Credible BugBench results | MISSING |
-| Bounded light-mode overhead | MISSING |
-| Tested CUDA support | MISSING |
-| Tested mixed precision | MISSING |
-| Tested `torch.compile` behavior | MISSING |
-| Custom operator verification | PARTIAL |
-| Triton integration | MISSING |
-| Failure artifact compatibility and migration | MISSING |
-| Replay validation and fidelity | PARTIAL, with a critical false-pass condition |
+| Stable public API | **PASS** (documented surface; CPU-eager) |
+| Credible BugBench results | **PASS** (checked-in corpus; fixture-scoped metrics) |
+| Bounded light-mode overhead | **PASS** (CPU measured; CUDA null) |
+| Tested CUDA support | EXPERIMENTAL / unproven |
+| Tested mixed precision | EXPERIMENTAL / unproven |
+| Tested `torch.compile` behavior | EXPERIMENTAL (eager backend smoke only) |
+| Custom operator verification | **PASS** for ordinary callables / Autograd.Function |
+| Triton integration | UNSUPPORTED |
+| Failure artifact compatibility and migration | **PASS** (NGF v1 inspect/sanitize/migrate) |
+| Replay validation and fidelity | **PASS** for verified MATCH; trusted checkpoints only |
 | CI exit codes and machine-readable integration | PARTIAL |
-| Security review and private defaults | MISSING |
-| Long-run stability | MISSING |
-| Real-world bug discoveries | MISSING |
-| Documented false positives and false negatives | PARTIAL; controlled-fixture caveat only |
-| Documented compatibility and limitations | PARTIAL |
+| Security review and private defaults | **PASS** for NGF private defaults + redaction + run_id containment; residual pickle threat on capture |
+| Long-run stability | DEFERRED |
+| Real-world bug discoveries | DEFERRED |
+| Documented false positives and false negatives | PARTIAL; controlled-fixture caveat retained |
+| Documented compatibility and limitations | **PASS** (CPU-eager claim; experimental elsewhere) |
 
-No gate with `MISSING` evidence may be converted into a support claim by documentation
-alone. `PARTIAL` means useful implementation exists, not that the gate has passed.
+No gate with `MISSING` / unproven experimental evidence may be converted into a
+support claim by documentation alone. `PARTIAL` means useful implementation exists,
+not that every industrial sub-gate has passed.
 
 ## Required execution order
 

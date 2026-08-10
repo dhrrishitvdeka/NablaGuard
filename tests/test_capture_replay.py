@@ -186,6 +186,41 @@ def test_recorder_rejects_non_monotonic_steps(tmp_path: Path) -> None:
             recorder.record_step(step=1)
 
 
+def test_capture_rejects_run_id_path_escape(tmp_path: Path) -> None:
+    model = torch.nn.Linear(1, 1)
+    with pytest.raises(ValueError, match="relative identifier"):
+        ng.capture(model, root=tmp_path, run_id="../escape")
+    with pytest.raises(ValueError, match="relative identifier"):
+        ng.capture(model, root=tmp_path, run_id=str(tmp_path / "abs"))
+    with pytest.raises(ValueError, match="relative identifier"):
+        ng.capture(model, root=tmp_path, run_id="bad/slash")
+
+
+def test_capture_redacts_secret_metadata_keys(tmp_path: Path) -> None:
+    model = torch.nn.Identity()
+    with ng.capture(
+        model,
+        root=tmp_path,
+        run_id="redact-meta",
+        hyperparameters={"learning_rate": 0.1, "api_key": "super-secret"},
+    ) as recorder:
+        recorder.record_step(
+            step=1,
+            extra={"password": "also-secret", "note": "ok"},
+            data_state={"token": "tok", "row": 3},
+        )
+    manifest = json.loads((recorder.run_path / "manifest.json").read_text(encoding="utf-8"))
+    step = json.loads(
+        (recorder.run_path / "steps" / "step-00000001.json").read_text(encoding="utf-8")
+    )
+    assert manifest["hyperparameters"]["api_key"] == "<REDACTED>"
+    assert manifest["hyperparameters"]["learning_rate"] == 0.1
+    assert step["extra"]["password"] == "<REDACTED>"
+    assert step["extra"]["note"] == "ok"
+    assert step["data_state"]["token"] == "<REDACTED>"
+    assert step["data_state"]["row"] == 3
+
+
 def test_capture_does_not_clone_parameters_without_change_contract(tmp_path: Path) -> None:
     model = torch.nn.Linear(4, 4)
 

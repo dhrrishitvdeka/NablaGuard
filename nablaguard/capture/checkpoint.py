@@ -38,7 +38,14 @@ def save_checkpoint(
 
 
 def load_checkpoint(path: Path) -> dict[str, Any]:
-    """Load a trusted local NablaGuard checkpoint."""
+    """Load a **trusted local** NablaGuard checkpoint.
+
+    Checkpoints are pickle-based (optimizer/scheduler state cannot use
+    ``weights_only=True``). Only load paths produced by this process or another
+    trusted NablaGuard capture. Never load checkpoints from untrusted sources.
+    Failure-artifact inspection uses the separate NGF JSON path and never loads
+    tensor pickles.
+    """
 
     value = torch.load(path, map_location="cpu", weights_only=False)
     if not isinstance(value, dict) or value.get("format_version") != 1:

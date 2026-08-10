@@ -87,6 +87,43 @@ def test_overhead_benchmark_measures_actual_guarded_model_path() -> None:
     assert workload["baseline"]["wall_seconds"] > 0
     assert workload["light"]["wall_clock_ratio"] > 0
     assert workload["light"]["python_heap_overhead_bytes"] >= 0
+    assert "Light" in report.format()
+    assert "tiny_mlp" in report.format()
+
+
+def test_checked_in_bugbench_corpus_passes() -> None:
+    root = Path("benchmarks/bugbench")
+    report = run_bugbench(root, seed=81927183)
+    assert report.passed
+    assert report.metrics["detection_rate"] == 1.0
+    assert report.metrics["false_positive_rate"] == 0.0
+    assert report.metrics["executed"] >= 10
+    text = report.format()
+    assert "Detection rate" in text
+    assert "Result: PASS" in text
+
+
+def test_overhead_cli_json(tmp_path: Path) -> None:
+    output = tmp_path / "overhead.json"
+    exit_code = main(
+        [
+            "benchmark",
+            "overhead",
+            "--quick",
+            "--device",
+            "cpu",
+            "--workload",
+            "tiny_mlp",
+            "--format",
+            "json",
+            "--output",
+            str(output),
+        ]
+    )
+    assert exit_code == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert "tiny_mlp" in payload["workloads"]
+    assert "light" in payload["workloads"]["tiny_mlp"]
 
 
 def _write_case(

@@ -11,6 +11,7 @@ from typing import Any
 
 import torch
 
+from nablaguard.artifact import ArtifactPolicy
 from nablaguard.core import NablaIssue, Severity
 from nablaguard.core.session import emit_issue
 
@@ -49,6 +50,9 @@ def fuzz(
     max_minimization_attempts: int = 100,
     max_failures: int = 1,
     artifact_dir: str | Path | None = None,
+    artifact_raw_tensors: bool = False,
+    artifact_max_size: str | int = "500MB",
+    artifact_max_tensors: int = 16,
 ) -> FuzzResult:
     """Explore shape, dtype, layout, and value-distribution combinations.
 
@@ -127,13 +131,21 @@ def fuzz(
             issues=evaluation.issues,
         )
         if artifact_dir is not None:
-            minimal_inputs = _generate_inputs(minimized, trial_seed)
-            failure.artifact_path = write_failure_artifact(
-                Path(artifact_dir),
-                metadata=failure.to_dict(),
-                inputs=evaluation.inputs,
-                minimized_inputs=minimal_inputs,
-            )
+            try:
+                minimal_inputs = _generate_inputs(minimized, trial_seed)
+                failure.artifact_path = write_failure_artifact(
+                    Path(artifact_dir),
+                    metadata=failure.to_dict(),
+                    inputs=evaluation.inputs,
+                    minimized_inputs=minimal_inputs,
+                    policy=ArtifactPolicy.create(
+                        raw_tensors=artifact_raw_tensors,
+                        max_size=artifact_max_size,
+                        max_stored_tensors=artifact_max_tensors,
+                    ),
+                )
+            except Exception as error:  # noqa: BLE001 — never drop a found failure
+                failure.artifact_error = f"{type(error).__name__}: {error}"
         failures.append(failure)
         for issue in evaluation.issues:
             emit_issue(issue)

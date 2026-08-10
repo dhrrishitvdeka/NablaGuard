@@ -37,6 +37,10 @@ def format_operator_result(result: OperatorCheckResult) -> str:
         lines.extend(["", *_format_issue(issue)])
     if result.artifact_path is not None:
         lines.extend(["", "REPRODUCTION", f"Artifact: {result.artifact_path}"])
+    elif result.artifact_error is not None:
+        lines.extend(
+            ["", "REPRODUCTION", f"Artifact write failed: {result.artifact_error}"]
+        )
     lines.extend(["", f"Result: {'PASS' if result.passed else 'FAIL'}"])
     return "\n".join(lines)
 

@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 import torch
 
+from nablaguard.artifact import ArtifactPolicy
 from nablaguard.capture.rng import capture_rng_state, restore_rng_state
 from nablaguard.core import NablaIssue, Severity
 from nablaguard.core.session import emit_issue
@@ -43,6 +44,9 @@ def operator(
     finite_difference_epsilon: float = 1e-6,
     max_finite_difference_elements: int = 128,
     artifact_dir: str | Path | None = None,
+    artifact_raw_tensors: bool = False,
+    artifact_max_size: str | int = "500MB",
+    artifact_max_tensors: int = 16,
     _emit_issues: bool = True,
 ) -> OperatorCheckResult:
     """Compare a candidate operator with a trusted PyTorch reference.
@@ -70,6 +74,11 @@ def operator(
             finite_difference_epsilon=finite_difference_epsilon,
             max_finite_difference_elements=max_finite_difference_elements,
             artifact_dir=artifact_dir,
+            artifact_policy=ArtifactPolicy.create(
+                raw_tensors=artifact_raw_tensors,
+                max_size=artifact_max_size,
+                max_stored_tensors=artifact_max_tensors,
+            ),
             _emit_issues=_emit_issues,
         )
     finally:
@@ -93,6 +102,7 @@ def _operator_impl(
     finite_difference_epsilon: float,
     max_finite_difference_elements: int,
     artifact_dir: str | Path | None,
+    artifact_policy: ArtifactPolicy,
     _emit_issues: bool,
 ) -> OperatorCheckResult:
     started = time.perf_counter()
@@ -195,9 +205,16 @@ def _operator_impl(
         },
     )
     if not result.passed and artifact_dir is not None:
-        result.artifact_path = write_failure_artifact(
-            Path(artifact_dir), metadata=result.to_dict(), inputs=originals
-        )
+        try:
+            result.artifact_path = write_failure_artifact(
+                Path(artifact_dir),
+                metadata=result.to_dict(),
+                inputs=originals,
+                policy=artifact_policy,
+            )
+        except Exception as error:  # noqa: BLE001 — never drop a completed failure
+            result.artifact_error = f"{type(error).__name__}: {error}"
+            result.metadata["artifact_error"] = result.artifact_error
     return result
 
 

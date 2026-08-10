@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -14,12 +15,15 @@ import torch
 
 from nablaguard.contracts import Contract, ContractContext
 from nablaguard.core import NablaIssue
+from nablaguard.core.redaction import redact_value
 from nablaguard.core.serialization import atomic_torch_save, atomic_write_json
 
 from .checkpoint import save_checkpoint
 from .environment import determinism_limitations, environment_metadata
 from .fingerprints import fingerprint_mapping
 from .rng import capture_rng_state, rng_digest
+
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 @dataclass(slots=True)
@@ -62,7 +66,7 @@ class Recorder:
         )
         identifier = self.run_id or _run_id()
         self.run_id = identifier
-        self.run_path = Path(self.root) / identifier
+        self.run_path = _resolve_run_path(Path(self.root), identifier)
 
     def __enter__(self) -> Recorder:
         if self._entered:
@@ -77,7 +81,7 @@ class Recorder:
             "checkpoint_every": self.checkpoint_every,
             "metadata_every": self.metadata_every,
             "fingerprint_samples": self.fingerprint_samples,
-            "hyperparameters": self.hyperparameters,
+            "hyperparameters": redact_value(self.hyperparameters),
             "environment": environment,
             "determinism_guaranteed": False,
             "determinism_limitations": determinism_limitations(environment),
@@ -139,8 +143,8 @@ class Recorder:
                     tensors or {}, max_samples=self.fingerprint_samples
                 ),
                 "rng_digest": rng_digest(rng),
-                "data_state": data_state or {},
-                "extra": extra or {},
+                "data_state": redact_value(data_state or {}),
+                "extra": redact_value(extra or {}),
                 "contract_issues": [issue.to_dict() for issue in step_contract_issues],
             }
             metadata_path = self.run_path / "steps" / f"step-{selected_step:08d}.json"
@@ -213,6 +217,23 @@ def _scalar_loss(loss: float | torch.Tensor | None) -> float | None:
 def _run_id() -> str:
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return f"run-{stamp}-{uuid4().hex[:8]}"
+
+
+def _resolve_run_path(root: Path, run_id: str) -> Path:
+    """Resolve a capture run path that cannot escape ``root``."""
+
+    if not _RUN_ID_PATTERN.fullmatch(run_id):
+        raise ValueError(
+            "run_id must be a relative identifier of 1–128 characters "
+            "(letters, digits, '.', '_', '-')"
+        )
+    root_resolved = root.expanduser().resolve()
+    candidate = (root_resolved / run_id).resolve()
+    try:
+        candidate.relative_to(root_resolved)
+    except ValueError as error:
+        raise ValueError("run_id escapes the configured capture root") from error
+    return candidate
 
 
 def _parameter_snapshot(model: torch.nn.Module) -> dict[str, torch.Tensor]:

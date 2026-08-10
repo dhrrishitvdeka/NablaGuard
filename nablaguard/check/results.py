@@ -43,6 +43,7 @@ class OperatorCheckResult:
     determinism: tuple[Comparison, ...] = ()
     issues: tuple[NablaIssue, ...] = ()
     artifact_path: Path | None = None
+    artifact_error: str | None = None
     elapsed_seconds: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -78,6 +79,7 @@ class OperatorCheckResult:
             "determinism": [item.to_dict() for item in self.determinism],
             "issues": [issue.to_dict() for issue in self.issues],
             "artifact_path": str(self.artifact_path) if self.artifact_path else None,
+            "artifact_error": self.artifact_error,
             "elapsed_seconds": self.elapsed_seconds,
             "metadata": self.metadata,
         }

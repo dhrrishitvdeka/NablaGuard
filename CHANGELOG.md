@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Added NGF v1 failure artifacts: versioned manifest, atomic write, completion
+  state, size budgets, private-by-default tensors, fingerprints (including
+  minimized inputs), JSON secret/path redaction, and safe inspect without
+  loading pickle data.
+- Added `nabla artifact inspect|sanitize|migrate` and aligned top-level
+  `nabla inspect` (including legacy metadata summary and migrate guidance).
+- Operator/fuzz keep failure reports when artifact writes fail; CLI validates
+  artifact policy flags with exit code 3.
+- Shared metadata redaction for capture manifests/step JSON; capture `run_id`
+  is constrained so paths cannot escape the capture root.
+- Replay `passed` requires verified `MATCH` steps only; capture clones prior
+  parameters only when a change contract needs them; light-mode statistics are
+  sample-bounded.
+- Non-interference regressions cover guard modes and capture; BugBench corpus
+  and suite benchmarks re-measured on CPU-eager (149 tests, 88% line coverage).
+
 ## 1.0.0 — 2026-08-09
 
 - Declared the documented top-level API and issue/report schemas stable.

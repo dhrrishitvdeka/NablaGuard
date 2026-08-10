@@ -26,6 +26,7 @@ class FuzzFailure:
     property_results: tuple[tuple[str, Comparison], ...] = ()
     issues: tuple[NablaIssue, ...] = ()
     artifact_path: Path | None = None
+    artifact_error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe failure report."""
@@ -44,6 +45,7 @@ class FuzzFailure:
             ],
             "issues": [issue.to_dict() for issue in self.issues],
             "artifact_path": str(self.artifact_path) if self.artifact_path else None,
+            "artifact_error": self.artifact_error,
         }
 
 
@@ -102,6 +104,8 @@ class FuzzResult:
             )
             if failure.artifact_path:
                 lines.append(f"Artifact: {failure.artifact_path}")
+            elif failure.artifact_error:
+                lines.append(f"Artifact write failed: {failure.artifact_error}")
         lines.extend(["", f"Result: {'PASS' if self.passed else 'FAIL'}"])
         return "\n".join(lines)
 

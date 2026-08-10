@@ -1,15 +1,14 @@
-"""Portable evidence artifacts for failed operator checks."""
+"""Operator-check integration with the versioned NGF artifact format."""
 
 from __future__ import annotations
 
-import hashlib
-import json
-import platform
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import torch
+
+from nablaguard.artifact import ArtifactPolicy, create_failure_artifact
 
 
 def write_failure_artifact(
@@ -18,45 +17,15 @@ def write_failure_artifact(
     metadata: dict[str, Any],
     inputs: Sequence[torch.Tensor],
     minimized_inputs: Sequence[torch.Tensor] | None = None,
+    policy: ArtifactPolicy | None = None,
 ) -> Path:
-    """Persist a failed experiment and return its content-addressed directory."""
+    """Persist a private-by-default, bounded NGF operator failure."""
 
-    encoded = json.dumps(metadata, sort_keys=True, default=str).encode("utf-8")
-    failure_id = f"NGF-{hashlib.sha256(encoded).hexdigest()[:8]}"
-    destination = root / failure_id
-    destination.mkdir(parents=True, exist_ok=True)
-    (destination / "metadata.json").write_text(
-        json.dumps(metadata, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
+    return create_failure_artifact(
+        root,
+        issue=metadata,
+        inputs=inputs,
+        minimized_inputs=minimized_inputs,
+        policy=policy,
+        provenance={"subsystem": "operator_check"},
     )
-    torch.save([value.detach().cpu() for value in inputs], destination / "inputs.pt")
-    if minimized_inputs is not None:
-        torch.save(
-            [value.detach().cpu() for value in minimized_inputs],
-            destination / "minimized_inputs.pt",
-        )
-    environment = {
-        "python": platform.python_version(),
-        "platform": platform.platform(),
-        "torch": torch.__version__,
-        "cuda": torch.version.cuda,
-        "cuda_available": torch.cuda.is_available(),
-    }
-    (destination / "environment.json").write_text(
-        json.dumps(environment, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    (destination / "reproduction.py").write_text(_REPRODUCTION, encoding="utf-8")
-    return destination
-
-
-_REPRODUCTION = '''"""Inspect the exact inputs saved by a NablaGuard failure artifact."""
-from pathlib import Path
-import json
-import torch
-
-HERE = Path(__file__).resolve().parent
-metadata = json.loads((HERE / "metadata.json").read_text(encoding="utf-8"))
-inputs = torch.load(HERE / "inputs.pt", weights_only=True)
-print(json.dumps(metadata, indent=2))
-print("Loaded input shapes:", [tuple(value.shape) for value in inputs])
-print("Re-run the named candidate and reference from metadata with these inputs.")
-'''

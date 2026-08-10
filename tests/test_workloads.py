@@ -72,17 +72,30 @@ def test_cnn_optimizer_step_capture_with_contracts(tmp_path) -> None:
 def test_observation_modes_do_not_change_training_semantics(mode: str) -> None:
     baseline = _deterministic_training(None)
     observed = _deterministic_training(mode)
+    _assert_training_snapshots_equal(observed, baseline)
 
+
+def test_capture_does_not_change_training_semantics(tmp_path) -> None:
+    baseline = _deterministic_training(None)
+    observed = _deterministic_training("capture", capture_root=tmp_path)
+    _assert_training_snapshots_equal(observed, baseline)
+
+
+def _assert_training_snapshots_equal(observed: dict, baseline: dict) -> None:
     assert observed["losses"] == baseline["losses"]
     assert torch.equal(observed["rng"], baseline["rng"])
     for name, expected in baseline["parameters"].items():
         assert torch.equal(observed["parameters"][name], expected), name
+    for name, expected in baseline["buffers"].items():
+        assert torch.equal(observed["buffers"][name], expected), name
     for name, expected in baseline["gradients"].items():
         assert torch.equal(observed["gradients"][name], expected), name
     _assert_nested_equal(observed["optimizer"], baseline["optimizer"])
 
 
-def _deterministic_training(mode: str | None) -> dict[str, object]:
+def _deterministic_training(
+    mode: str | None, *, capture_root=None
+) -> dict[str, object]:
     torch.manual_seed(9127)
     model = torch.nn.Sequential(
         torch.nn.Linear(4, 8),
@@ -92,11 +105,24 @@ def _deterministic_training(mode: str | None) -> dict[str, object]:
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=1.0e-3)
     losses: list[float] = []
-    monitor = ng.guard(model, mode=mode, capture_source=False) if mode is not None else None
-    if monitor is not None:
+    monitor = None
+    recorder = None
+    if mode in {"light", "standard", "deep"}:
+        monitor = ng.guard(model, mode=mode, capture_source=False)
         monitor.__enter__()
+    elif mode == "capture":
+        assert capture_root is not None
+        recorder = ng.capture(
+            model,
+            optimizer,
+            root=capture_root,
+            run_id="non-interference",
+            checkpoint_every=100,
+            metadata_every=1,
+        )
+        recorder.__enter__()
     try:
-        for _ in range(3):
+        for step in range(1, 4):
             inputs = torch.randn(6, 4)
             targets = torch.randn(6, 2)
             optimizer.zero_grad()
@@ -104,13 +130,20 @@ def _deterministic_training(mode: str | None) -> dict[str, object]:
             loss.backward()
             losses.append(float(loss.detach()))
             optimizer.step()
+            if recorder is not None:
+                recorder.record_step(step=step, loss=loss)
     finally:
         if monitor is not None:
             monitor.__exit__(None, None, None)
+        if recorder is not None:
+            recorder.__exit__(None, None, None)
     return {
         "losses": losses,
         "parameters": {
             name: value.detach().clone() for name, value in model.named_parameters()
+        },
+        "buffers": {
+            name: value.detach().clone() for name, value in model.named_buffers()
         },
         "gradients": {
             name: value.grad.detach().clone()

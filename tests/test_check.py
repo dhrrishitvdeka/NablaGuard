@@ -84,11 +84,25 @@ def test_failed_check_writes_reproducible_artifact(tmp_path: Path) -> None:
     )
 
     assert result.artifact_path is not None
-    assert (result.artifact_path / "metadata.json").is_file()
-    assert (result.artifact_path / "inputs.pt").is_file()
+    assert (result.artifact_path / "manifest.json").is_file()
+    assert (result.artifact_path / "issue.json").is_file()
+    assert (result.artifact_path / "fingerprints.json").is_file()
     assert (result.artifact_path / "environment.json").is_file()
     assert (result.artifact_path / "reproduction.py").is_file()
-    saved = torch.load(result.artifact_path / "inputs.pt", weights_only=True)
+    assert not (result.artifact_path / "inputs" / "inputs.pt").exists()
+
+
+def test_failed_check_requires_explicit_raw_tensor_capture(tmp_path: Path) -> None:
+    result = ng.check.operator(
+        candidate=BadSquare.apply,
+        reference=lambda x: x**2,
+        inputs=[ng.tensor(shape=(4,), dtype=torch.float64)],
+        artifact_dir=tmp_path,
+        artifact_raw_tensors=True,
+    )
+
+    assert result.artifact_path is not None
+    saved = torch.load(result.artifact_path / "inputs" / "inputs.pt", weights_only=True)
     assert saved[0].shape == (4,)
 
 
