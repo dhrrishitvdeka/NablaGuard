@@ -250,6 +250,50 @@ def test_capture_bounds_loss_history_to_contract_window(tmp_path: Path) -> None:
     assert recorder._loss_history == [5.0, 6.0, 7.0]
 
 
+def test_replay_of_restored_checkpoint_boundary_passes(tmp_path: Path) -> None:
+    model = torch.nn.Linear(1, 1, bias=False, dtype=torch.float64)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    with ng.capture(
+        model,
+        optimizer,
+        root=tmp_path,
+        run_id="boundary-only",
+        checkpoint_every=2,
+    ) as recorder:
+        for step in range(1, 3):
+            x = torch.randn(2, 1, dtype=torch.float64)
+            loss = model(x).square().mean()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            recorder.record_step(step=step, loss=loss, tensors={"weight": model.weight})
+
+    restored = torch.nn.Linear(1, 1, bias=False, dtype=torch.float64)
+    restored_opt = torch.optim.SGD(restored.parameters(), lr=0.1)
+    result = ng.replay(
+        recorder.run_path,
+        model=restored,
+        optimizer=restored_opt,
+        step_fn=lambda step, metadata: None,
+        from_step=2,
+        to_step=2,
+    )
+    assert result.checkpoint_step == 2
+    assert result.steps == ()
+    assert result.passed
+
+
+def test_capture_redacts_executable_path(tmp_path: Path) -> None:
+    model = torch.nn.Identity()
+    with ng.capture(model, root=tmp_path, run_id="env") as recorder:
+        recorder.record_step(step=1)
+    manifest = json.loads((recorder.run_path / "manifest.json").read_text(encoding="utf-8"))
+    executable = manifest["environment"]["executable"]
+    home = str(tmp_path.home())
+    assert home not in executable
+    assert "<HOME>" in executable or "python" in executable.lower()
+
+
 def test_replay_without_tensor_evidence_is_not_a_pass(tmp_path: Path) -> None:
     model = torch.nn.Identity()
     with ng.capture(model, root=tmp_path, run_id="unverified") as recorder:

@@ -293,8 +293,11 @@ def inspect_artifact(path: str | Path, *, verify_hashes: bool = True) -> NGFInsp
                 errors.append(f"unsafe file inventory path: {relative!r}")
                 continue
             listed.add(relative)
-            candidate = artifact_path / Path(PurePosixPath(relative))
-            if candidate.is_symlink():
+            candidate = _resolve_contained_file(artifact_path, relative)
+            if candidate is None:
+                errors.append(f"unsafe file inventory path: {relative!r}")
+                continue
+            if _is_link_or_junction(candidate):
                 errors.append(f"symbolic links are not allowed: {relative}")
                 continue
             if not candidate.is_file():
@@ -304,6 +307,11 @@ def inspect_artifact(path: str | Path, *, verify_hashes: bool = True) -> NGFInsp
                 size = candidate.stat().st_size
             except OSError as error:
                 errors.append(f"cannot stat listed file {relative}: {error}")
+                continue
+            if size > _MAX_INSPECT_FILE_BYTES:
+                errors.append(
+                    f"file exceeds inspection size cap ({_MAX_INSPECT_FILE_BYTES} bytes): {relative}"
+                )
                 continue
             if size != entry.get("size_bytes"):
                 errors.append(f"file size mismatch: {relative}")
@@ -481,7 +489,7 @@ def _safe_walk(
     contains_raw = False
     for path, is_symlink, is_dir, is_file in _walk_entries(root):
         relative = path.relative_to(root).as_posix()
-        if is_symlink:
+        if is_symlink or _is_link_or_junction(path):
             errors.append(f"symbolic links are not allowed: {relative}")
             continue
         if is_dir:
@@ -526,7 +534,7 @@ def _walk_entries(root: Path) -> Iterator[tuple[Path, bool, bool, bool]]:
                     except OSError:
                         continue
                     yield path, is_symlink, is_dir, is_file
-                    if is_dir and not is_symlink:
+                    if is_dir and not is_symlink and not _is_link_or_junction(path):
                         stack.append(path)
         except OSError:
             continue
@@ -566,8 +574,51 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _safe_relative_path(value: str) -> bool:
-    path = PurePosixPath(value)
-    return not path.is_absolute() and ".." not in path.parts and value != ""
+    """Syntactic check that ``value`` cannot name a location outside the artifact."""
+
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return False
+    normalized = value.replace("\\", "/")
+    posix = PurePosixPath(normalized)
+    if posix.is_absolute() or ".." in posix.parts or not posix.parts:
+        return False
+    first = posix.parts[0]
+    if first.endswith(":") or (len(first) == 2 and first[1] == ":"):
+        return False
+    if first.startswith("//") or first.startswith("\\\\"):
+        return False
+    host = Path(normalized)
+    return not host.is_absolute() and not bool(getattr(host, "drive", ""))
+
+
+def _resolve_contained_file(root: Path, relative: str) -> Path | None:
+    """Resolve ``relative`` inside ``root`` or return None if it can escape."""
+
+    if not _safe_relative_path(relative):
+        return None
+    posix = PurePosixPath(relative.replace("\\", "/"))
+    root_resolved = root.resolve()
+    candidate = root_resolved.joinpath(*posix.parts).resolve()
+    try:
+        candidate.relative_to(root_resolved)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _is_link_or_junction(path: Path) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+    except OSError:
+        return True
+    is_junction = getattr(os.path, "isjunction", None)
+    if callable(is_junction):
+        try:
+            return bool(is_junction(path))
+        except OSError:
+            return True
+    return False
 
 
 def _sha256(path: Path) -> str:

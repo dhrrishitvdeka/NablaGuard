@@ -102,6 +102,27 @@ def test_checkpoint_aware_bisect_restores_and_replays_each_probe(tmp_path: Path)
     assert any(probe.replayed_steps > 0 for probe in result.probes)
 
 
+def test_bisect_missing_metadata_is_an_error(tmp_path: Path) -> None:
+    model = torch.nn.Linear(1, 1, bias=False)
+    with ng.capture(
+        model,
+        root=tmp_path,
+        run_id="sparse",
+        metadata_every=4,
+        checkpoint_every=8,
+    ) as recorder:
+        for step in range(1, 9):
+            recorder.record_step(step=step, loss=float(step))
+
+    with pytest.raises(FileNotFoundError, match="metadata missing"):
+        ng.bisect(
+            recorder.run_path,
+            metric_greater_than("loss", 4),
+            known_good=0,
+            known_bad=8,
+        )
+
+
 def test_bisect_rejects_incorrect_endpoint_labels(tmp_path: Path) -> None:
     run_path = _metadata_run(tmp_path)
 

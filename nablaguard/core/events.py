@@ -44,4 +44,10 @@ class TensorEvent:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
 
-        return asdict(self)
+        from nablaguard.core.redaction import redact_string
+
+        value = asdict(self)
+        location = value.get("source_location")
+        if isinstance(location, dict) and isinstance(location.get("filename"), str):
+            location["filename"] = redact_string(location["filename"])
+        return value

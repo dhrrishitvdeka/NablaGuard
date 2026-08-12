@@ -90,11 +90,12 @@ class LossTrace:
         issues: list[NablaIssue] = []
         for left, right in itertools.combinations(gradients, 2):
             denominator = norms[left] * norms[right]
-            cosine = (
-                float(torch.sum(gradients[left] * gradients[right]).item()) / denominator
-                if denominator
-                else math.nan
-            )
+            if not denominator:
+                cosine = math.nan
+            else:
+                # Real inner product; for complex grads this is Re(<u, v>).
+                inner = (gradients[left].conj() * gradients[right]).real
+                cosine = float(inner.sum().item()) / denominator
             pairs.append(GradientCosine(left, right, cosine))
             if not math.isnan(cosine) and cosine <= self.conflict_threshold:
                 issues.append(

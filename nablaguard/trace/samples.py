@@ -410,7 +410,7 @@ def _cosines_to_batch(
     combined_norm: torch.Tensor,
 ) -> torch.Tensor:
     denominator = norms * combined_norm
-    values = matrix @ combined
+    values = (matrix.conj() @ combined).real
     nan = torch.full_like(values, float("nan"))
     return torch.where(denominator > 0, values / denominator, nan)
 
@@ -429,7 +429,7 @@ def _duplicate_pairs(
     selected = matrix[:count]
     selected_norms = norms[:count]
     denominator = selected_norms[:, None] * selected_norms[None, :]
-    cosines = selected @ selected.T
+    cosines = (selected.conj() @ selected.mT).real
     cosines = torch.where(denominator > 0, cosines / denominator, torch.nan)
     pairs: list[SamplePair] = []
     for left in range(count):

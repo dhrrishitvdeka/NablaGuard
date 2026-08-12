@@ -143,6 +143,40 @@ def test_softmax_translation_property_passes() -> None:
     assert result.passed
 
 
+def test_fuzz_detects_wrong_backward() -> None:
+    class BadSquare(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x**2
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            (x,) = ctx.saved_tensors
+            return grad_output * x
+
+    result = ng.check.fuzz(
+        candidate=BadSquare.apply,
+        reference=lambda x: x**2,
+        inputs=[TensorSpec((8,), torch.float64)],
+        trials=1,
+        minimize=False,
+    )
+
+    assert not result.passed
+    assert result.cases_run == 1
+    assert result.failures[0].issues[0].category == "BACKWARD_MISMATCH"
+
+
+def test_fuzz_generated_inputs_keep_requires_grad() -> None:
+    from nablaguard.check.fuzz import _generate_inputs
+
+    values = _generate_inputs((TensorSpec((4,), torch.float64, requires_grad=True),), 1)
+    assert values[0].requires_grad is True
+    frozen = _generate_inputs((TensorSpec((4,), torch.float64, requires_grad=False),), 1)
+    assert frozen[0].requires_grad is False
+
+
 def test_fuzz_emits_failure_into_shared_session() -> None:
     with ng.Session() as session:
         ng.check.fuzz(

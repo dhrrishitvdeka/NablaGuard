@@ -177,17 +177,18 @@ def bisect(
     if checkpoint_aware and (model_factory is None or step_fn is None):
         raise ValueError("checkpoint-aware bisection requires model_factory and step_fn")
 
-    states: dict[int, BoundaryState] = {}
+    metadata_cache: dict[int, dict[str, Any]] = {}
     costs: dict[int, tuple[int, int]] = {}
 
     def state_at(step: int) -> BoundaryState:
-        if step in states:
-            return states[step]
-        metadata = _load_metadata(run_path, step)
+        # Do not retain model/optimizer objects across probes. first_bad already
+        # memoizes predicate outcomes, so each step is materialized at most once.
+        metadata = metadata_cache.get(step)
+        if metadata is None:
+            metadata = _load_metadata(run_path, step)
+            metadata_cache[step] = metadata
         if model_factory is None or step_fn is None:
-            state = BoundaryState(step, metadata)
-            states[step] = state
-            return state
+            return BoundaryState(step, metadata)
         model = model_factory()
         optimizer = optimizer_factory(model) if optimizer_factory is not None else None
         last_tensors: Mapping[str, torch.Tensor] | None = None
@@ -195,9 +196,7 @@ def bisect(
         if checkpoint_step == step:
             restore_checkpoint(checkpoint_path, model=model, optimizer=optimizer)
             costs[step] = (checkpoint_step, 0)
-            state = BoundaryState(step, metadata, None, model, optimizer, None)
-            states[step] = state
-            return state
+            return BoundaryState(step, metadata, None, model, optimizer, None)
 
         def invoke(
             current_step: int, current_metadata: dict[str, Any]
@@ -217,9 +216,7 @@ def bisect(
         if not replay_result.passed:
             raise RuntimeError(f"cannot evaluate predicate at step {step}: replay diverged first")
         costs[step] = (replay_result.checkpoint_step, len(replay_result.steps))
-        state = BoundaryState(step, metadata, last_tensors, model, optimizer, replay_result)
-        states[step] = state
-        return state
+        return BoundaryState(step, metadata, last_tensors, model, optimizer, replay_result)
 
     search = first_bad(known_good, selected_bad, lambda step: predicate(state_at(step)))
     probes = tuple(
@@ -301,7 +298,10 @@ def _load_metadata(run_path: Path, step: int) -> dict[str, Any]:
         return {"step": 0, "loss": None, "fingerprints": {}, "batch_indices": None}
     path = run_path / "steps" / f"step-{step:08d}.json"
     if not path.is_file():
-        return {"step": step, "loss": None, "fingerprints": {}, "batch_indices": None}
+        raise FileNotFoundError(
+            f"captured metadata missing for step {step}; "
+            "bisect requires metadata_every=1 or a captured file at every probe"
+        )
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"invalid captured metadata: {path}")

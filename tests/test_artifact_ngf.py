@@ -368,6 +368,31 @@ def test_cli_invalid_artifact_max_size(capsys) -> None:
     assert "Invalid check configuration" in capsys.readouterr().err
 
 
+def test_inspect_rejects_windows_drive_inventory_paths(tmp_path: Path) -> None:
+    path = create_failure_artifact(tmp_path, issue=_tiny_issue(), inputs=[])
+    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["files"] = [
+        {"path": "C:/Windows/win.ini", "size_bytes": 1, "sha256": "00"},
+        {"path": r"\\server\share\secret", "size_bytes": 1, "sha256": "00"},
+    ]
+    (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    inspection = inspect_artifact(path, verify_hashes=False)
+    assert not inspection.valid
+    joined = " ".join(inspection.errors)
+    assert "unsafe file inventory path" in joined
+    assert "win.ini" not in (path / "issue.json").read_text(encoding="utf-8")
+
+
+def test_inspect_does_not_hash_oversized_listed_files(tmp_path: Path) -> None:
+    from nablaguard.artifact import ngf
+
+    path = create_failure_artifact(tmp_path, issue=_tiny_issue(), inputs=[])
+    with patch.object(ngf, "_MAX_INSPECT_FILE_BYTES", 32):
+        inspection = inspect_artifact(path)
+    assert not inspection.valid
+    assert any("inspection size cap" in error for error in inspection.errors)
+
+
 def test_inspect_missing_path(tmp_path: Path) -> None:
     missing = tmp_path / "does-not-exist"
     inspection = inspect_artifact(missing)

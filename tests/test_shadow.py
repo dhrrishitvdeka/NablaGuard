@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 import nablaguard as ng
@@ -92,6 +93,16 @@ def test_shadow_failure_emits_unknown_issue_instead_of_silent_skip() -> None:
     assert len(unsupported) == 1
     assert unsupported[0].code == "NG1005"
     assert unsupported[0].evidence["status"] == "UNKNOWN"
+
+
+def test_shadow_comparison_detects_complex_imaginary_error() -> None:
+    real = torch.tensor([1 + 2j], dtype=torch.complex64)
+    shadow = torch.tensor([1 + 9j], dtype=torch.complex128)
+
+    comparison = compare_shadow(real, shadow)
+
+    assert comparison.max_absolute_error == pytest.approx(7.0)
+    assert comparison.finite_mismatch_count == 0
 
 
 def test_matching_nonfinite_shadow_values_are_not_a_precision_mismatch() -> None:

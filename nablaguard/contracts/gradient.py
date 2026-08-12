@@ -30,7 +30,12 @@ def norm(
     if maximum is not None and maximum < 0:
         raise ValueError("gradient norm maximum must be non-negative")
 
+    cache: dict[int, float | None] = {}
+
     def observed(context: ContractContext) -> float | None:
+        key = id(context)
+        if key in cache:
+            return cache[key]
         gradients = context.gradients
         if gradients is None and context.parameters is not None:
             gradients = {
@@ -39,11 +44,15 @@ def norm(
                 if value.grad is not None
             }
         if not gradients:
+            cache[key] = None
             return None
-        squared = sum(
-            float(value.detach().to("cpu").square().sum().item()) for value in gradients.values()
-        )
-        return float(squared**0.5)
+        squared = 0.0
+        for value in gradients.values():
+            detached = value.detach()
+            magnitude = detached.abs() if detached.is_complex() else detached
+            squared += float(magnitude.square().sum().item())
+        cache[key] = float(squared**0.5)
+        return cache[key]
 
     def predicate(context: ContractContext) -> bool:
         value = observed(context)

@@ -9,27 +9,31 @@ from typing import Any
 
 import torch
 
+from nablaguard.core.redaction import redact_value
+
 
 def environment_metadata() -> dict[str, Any]:
     """Describe runtime factors known to affect replay behavior."""
 
-    return {
-        "python": platform.python_version(),
-        "python_implementation": platform.python_implementation(),
-        "platform": platform.platform(),
-        "executable": sys.executable,
-        "torch": torch.__version__,
-        "cuda_version": torch.version.cuda,
-        "cuda_available": torch.cuda.is_available(),
-        "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
-        "cudnn_version": torch.backends.cudnn.version()
-        if torch.backends.cudnn.is_available()
-        else None,
-        "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
-        "cudnn_deterministic": torch.backends.cudnn.deterministic,
-        "cudnn_benchmark": torch.backends.cudnn.benchmark,
-        "pid": os.getpid(),
-    }
+    return redact_value(
+        {
+            "python": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+            "platform": platform.platform(),
+            "executable": sys.executable,
+            "torch": torch.__version__,
+            "cuda_version": torch.version.cuda,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            "cudnn_version": torch.backends.cudnn.version()
+            if torch.backends.cudnn.is_available()
+            else None,
+            "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+            "cudnn_deterministic": torch.backends.cudnn.deterministic,
+            "cudnn_benchmark": torch.backends.cudnn.benchmark,
+            "pid": os.getpid(),
+        }
+    )
 
 
 def determinism_limitations(environment: dict[str, Any]) -> list[str]:

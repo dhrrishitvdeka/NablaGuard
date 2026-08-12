@@ -105,18 +105,58 @@ def test_cli_bisect_exit_code_pass(tmp_path: Path) -> None:
     assert exit_code == 0
 
 
-def test_cli_replay_requires_trust_outside_default_root(tmp_path: Path) -> None:
+def test_cli_replay_requires_trust_flag_for_existing_run(tmp_path: Path, capsys) -> None:
+    model = torch.nn.Linear(1, 1, bias=False)
+    with ng.capture(model, root=tmp_path, run_id="untrusted") as recorder:
+        recorder.record_step(step=1, loss=1.0)
+    exit_code = main(
+        [
+            "replay",
+            str(recorder.run_path),
+            "--model-factory",
+            "torch.nn:Identity",
+            "--step-function",
+            "torch:sin",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 3
+    assert "--i-trust-this-run" in captured.err
+
+
+def test_cli_replay_missing_run_is_configuration_error(tmp_path: Path) -> None:
     exit_code = main(
         [
             "replay",
             str(tmp_path / "missing-run"),
             "--model-factory",
-            "torch.nn:Linear",
+            "torch.nn:Identity",
             "--step-function",
             "torch:sin",
+            "--i-trust-this-run",
         ]
     )
     assert exit_code == 3
+
+
+def test_cli_check_trials_detects_wrong_backward(capsys) -> None:
+    exit_code = main(
+        [
+            "check",
+            "tests.fixtures.broken_models:WrongSquare.apply",
+            "--reference",
+            "torch:square",
+            "--shape",
+            "8",
+            "--dtype",
+            "float64",
+            "--trials",
+            "3",
+        ]
+    )
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "FAIL" in output
 
 
 def test_cli_check_writes_junit(tmp_path: Path) -> None:

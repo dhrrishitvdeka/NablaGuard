@@ -2,26 +2,28 @@
 
 ## Unreleased
 
-- Hardened audit follow-ups for the CPU-eager baseline: shadow failures emit
-  `NG1005` / `SHADOW_UNSUPPORTED` instead of silent skips; tensor provenance
-  drops stale object ids via weak references; fingerprints record
-  `checksum_scope` (`full` | `sampled`) and `statistics_scope`.
-- Session issue lists are bounded (`max_issues`, `dropped_issues`); reports use
-  strict JSON (`normalize_json`, no `default=str`); tensors in evidence are
-  summarized without raw values; report files write atomically.
-- Advanced checks preserve input `requires_grad` (finite differences only cover
-  inputs that already require grad). Loss traces expose `release()` to drop
-  retained gradient copies after `gradient()` use.
-- Bisection verifies monotonicity on small intervals and reports
-  `NG4004` / `BISECT_NON_MONOTONIC` with `passed=false` when outcomes oscillate.
-- CLI exit taxonomy is `0` pass, `1` check-fail, `2` usage, `3` error; pytest
-  path checks map into that contract; `bisect` fails on non-monotonic results;
-  `replay` warns about pickle checkpoints and requires `--i-trust-this-run`
-  outside `.nabla/runs`.
-- Package ships `py.typed`; CI pins GitHub Actions to commit SHAs and enforces
-  coverage `fail_under = 85`.
-- Prior NGF v1, run_id containment, replay MATCH-only pass, selective capture
-  snapshots, redaction, and non-interference work remains as previously listed.
+- `check.fuzz` keeps `TensorSpec.requires_grad`, so wrong backwards are
+  detected. `nabla check --trials N` uses the same path.
+- Advanced checks and finite-difference probes use the same stride-preserving
+  leaf copy as the base operator check. User-supplied non-contiguous tensors
+  keep their layout through `_materialize`.
+- Shadow comparison promotes complex tensors to `complex128` instead of
+  dropping the imaginary part.
+- NGF inspect resolves inventory paths inside the artifact root, rejects
+  drive-qualified and UNC paths, skips junctions, and will not hash files above
+  the inspection size cap.
+- `nabla replay` always requires `--i-trust-this-run`. Restoring a checkpoint
+  that already is the requested boundary is a pass, not an empty-range fail.
+- Capture environment metadata redacts home/user/host strings. Source locations
+  in issue and event JSON do the same.
+- Bisect raises when a probe step has no captured metadata. Checkpoint-aware
+  probes no longer retain every model copy.
+- Gradient-norm contracts and cancellation/cosine helpers use magnitude /
+  real inner products so complex tensors are well-defined.
+- BugBench internal errors map to CLI exit `3`.
+- Shadow failures emit `NG1005` / `SHADOW_UNSUPPORTED`. Fingerprints record
+  `checksum_scope` and `statistics_scope`. Session issue lists are bounded.
+- CLI exit taxonomy is `0` pass, `1` check-fail, `2` usage, `3` error.
 
 ## 1.0.0 — 2026-08-09
 

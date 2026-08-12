@@ -20,7 +20,8 @@ from .fuzz_results import FuzzFailure, FuzzResult
 from .minimizer import minimize as minimize_specs
 from .properties import Property
 from .results import Comparison, OperatorCheckResult
-from .runner import _leaf_copy, operator
+from .isolation import leaf_copy
+from .runner import operator
 from .specs import TensorSpec, TensorStrategy
 
 
@@ -196,7 +197,7 @@ def _evaluate(
             )
         except Exception as candidate_error:
             try:
-                reference(*(_leaf_copy(value) for value in generated))
+                reference(*(leaf_copy(value) for value in generated))
             except Exception:
                 return _Evaluation(False, False, "reference rejected generated case", generated)
             issue = NablaIssue(
@@ -218,7 +219,7 @@ def _evaluate(
                 reasons.append("operator comparison failed")
     else:
         try:
-            candidate(*(_leaf_copy(value) for value in generated))
+            candidate(*(leaf_copy(value) for value in generated))
         except Exception as error:
             issue = NablaIssue(
                 code="NG3006",
@@ -235,7 +236,7 @@ def _evaluate(
     for invariant in properties:
         try:
             comparison = invariant.evaluate(
-                tuple(_leaf_copy(value) for value in generated),
+                tuple(leaf_copy(value) for value in generated),
                 absolute_tolerance=absolute_tolerance,
                 relative_tolerance=relative_tolerance,
             )
@@ -277,5 +278,7 @@ def _generate_inputs(specs: tuple[TensorSpec, ...], seed: int) -> tuple[torch.Te
     for index, spec in enumerate(specs):
         generator = torch.Generator(device=spec.device)
         generator.manual_seed(seed + index)
-        values.append(spec.generate(generator).detach())
+        # Keep spec.requires_grad. detach() would drop it and silently disable
+        # every default backward / VJP comparison in fuzz trials.
+        values.append(spec.generate(generator))
     return tuple(values)

@@ -24,6 +24,7 @@ from .fingerprints import fingerprint_mapping
 from .rng import capture_rng_state, rng_digest
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_MAX_CONTRACT_ISSUES = 10_000
 
 
 @dataclass(slots=True)
@@ -129,7 +130,9 @@ class Recorder:
             for assertion in self.contracts
             if (issue := assertion.evaluate(context)) is not None
         ]
-        self.contract_issues.extend(step_contract_issues)
+        remaining = _MAX_CONTRACT_ISSUES - len(self.contract_issues)
+        if remaining > 0:
+            self.contract_issues.extend(step_contract_issues[:remaining])
         metadata_path: Path | None = None
         if selected_step % self.metadata_every == 0:
             rng = capture_rng_state()

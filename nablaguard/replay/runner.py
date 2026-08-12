@@ -73,9 +73,15 @@ class ReplayResult:
 
     @property
     def passed(self) -> bool:
-        """Whether every requested step produced verified matching evidence."""
+        """Whether every requested step produced verified matching evidence.
 
-        return bool(self.steps) and all(value.status == "MATCH" for value in self.steps)
+        An empty step list is a pass only when the restored checkpoint already
+        is the requested boundary (nothing left to re-execute).
+        """
+
+        if not self.steps:
+            return self.checkpoint_step == self.to_step and self.from_step <= self.to_step
+        return all(value.status == "MATCH" for value in self.steps)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe report."""

@@ -123,6 +123,42 @@ def test_jvp_candidate_and_reference_receive_identical_rng_state() -> None:
     assert all(comparison.passed for comparison in result.jvp)
 
 
+def test_advanced_checks_preserve_noncontiguous_strides() -> None:
+    seen: list[tuple[int, ...]] = []
+
+    def candidate(value: torch.Tensor) -> torch.Tensor:
+        seen.append(tuple(value.stride()))
+        return value.sin()
+
+    spec = ng.tensor(shape=(4, 6), dtype=torch.float64, layout="strided")
+    generated = spec.generate(torch.Generator().manual_seed(0))
+    expected = tuple(generated.stride())
+    result = ng.check.operator(
+        candidate=candidate,
+        reference=lambda value: value.sin(),
+        inputs=[spec],
+        check_backward=False,
+        check_determinism=True,
+        check_finite_difference=True,
+    )
+
+    assert result.passed
+    assert expected != (6, 1)
+    assert seen
+    assert all(stride == expected for stride in seen)
+
+
+def test_operator_preserves_user_supplied_strided_tensor() -> None:
+    value = torch.randn(4, 8, dtype=torch.float64)[:, ::2]
+    result = ng.check.operator(
+        candidate=lambda x: x.sin(),
+        reference=lambda x: x.sin(),
+        inputs=[value],
+    )
+    assert result.passed
+    assert result.metadata["input_strides"][0] == list(value.stride())
+
+
 def test_finite_difference_has_explicit_element_budget() -> None:
     try:
         ng.check.operator(

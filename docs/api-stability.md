@@ -15,8 +15,8 @@ recommendations may evolve in backward-compatible ways.
 - **Capture checkpoints** remain trusted local pickle (`torch.load` with
   `weights_only=False` for optimizer state). Never load untrusted checkpoints.
   NGF inspect/sanitize never executes artifact Python or loads `.pt` files.
-  The CLI prints a pickle trust warning on replay and requires
-  `--i-trust-this-run` for run paths outside `.nabla/runs`.
+  The CLI prints a pickle trust warning on replay and always requires
+  `--i-trust-this-run`. There is no implicit trust for `.nabla/runs`.
 
 ## Report and CLI contracts
 

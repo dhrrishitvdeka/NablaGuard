@@ -197,7 +197,7 @@ nabla sanitize train.py --mode deep
 nabla trace train.py --format html --output trace.html
 nabla check package.ops:kernel --reference package.refs:kernel --trials 100
 nabla check tests/test_kernel.py
-nabla replay .nabla/runs/run-id --model-factory app:model --step-function app:step
+nabla replay .nabla/runs/run-id --model-factory app:model --step-function app:step --i-trust-this-run
 nabla bisect .nabla/runs/run-id --metric loss --greater-than 10
 nabla inspect .nabla/failures/NGF-example
 ```
@@ -215,8 +215,8 @@ pytest --cov=nablaguard --cov-report=term-missing
 python benchmarks/suite.py --output benchmark.json
 ```
 
-See [architecture](ARCHITECTURE.md), [roadmap](ROADMAP.md), the
-[mathematical guide](docs/math/README.md), and [measured performance
+See [architecture](ARCHITECTURE.md), [security](SECURITY.md), [roadmap](ROADMAP.md),
+the [mathematical guide](docs/math/README.md), and [measured performance
 characteristics](docs/performance.md). CUDA paths are tested only when hardware
 is available. `torch.compile(..., backend="eager")` has smoke coverage; native
 Triton introspection, distributed training, and arbitrary external state are

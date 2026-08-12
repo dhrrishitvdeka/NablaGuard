@@ -22,7 +22,7 @@ from .advanced import (
 )
 from .artifacts import write_failure_artifact
 from .compare import compare_tensors
-from .isolation import isolated_callable
+from .isolation import isolated_callable, leaf_copy
 from .results import Comparison, OperatorCheckResult
 from .specs import TensorSpec
 
@@ -107,8 +107,8 @@ def _operator_impl(
 ) -> OperatorCheckResult:
     started = time.perf_counter()
     originals = [_materialize(value, seed + index) for index, value in enumerate(inputs)]
-    candidate_inputs = [_leaf_copy(value) for value in originals]
-    reference_inputs = [_leaf_copy(value) for value in originals]
+    candidate_inputs = [leaf_copy(value) for value in originals]
+    reference_inputs = [leaf_copy(value) for value in originals]
     candidate_execution = isolated_callable(candidate)
     reference_execution = isolated_callable(reference)
 
@@ -225,28 +225,8 @@ def _materialize(value: TensorSpec | torch.Tensor, seed: int) -> torch.Tensor:
         generated = value.generate(generator)
         return generated.detach().requires_grad_(generated.requires_grad)
     if isinstance(value, torch.Tensor):
-        return value.detach().clone().requires_grad_(value.requires_grad)
+        return leaf_copy(value)
     raise TypeError(f"inputs must contain TensorSpec or Tensor, got {type(value)!r}")
-
-
-def _leaf_copy(value: torch.Tensor) -> torch.Tensor:
-    detached = value.detach()
-    if any(
-        stride == 0 and size > 1 for stride, size in zip(value.stride(), value.shape, strict=True)
-    ):
-        base = detached
-        for dimension, (stride, size) in enumerate(zip(value.stride(), value.shape, strict=True)):
-            if stride == 0 and size > 1:
-                base = base.narrow(dimension, 0, 1)
-        copy = base.clone(memory_format=torch.preserve_format).expand(value.shape)
-    else:
-        copy = torch.empty_strided(
-            value.shape, value.stride(), dtype=value.dtype, device=value.device
-        )
-        copy.copy_(detached)
-    if value.requires_grad and (copy.is_floating_point() or copy.is_complex()):
-        copy.requires_grad_(True)
-    return copy
 
 
 def _as_tensor_tuple(value: Any) -> tuple[torch.Tensor, ...]:

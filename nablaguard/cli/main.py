@@ -127,7 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument(
         "--i-trust-this-run",
         action="store_true",
-        help="acknowledge that checkpoints are untrusted pickle and must only be local/trusted",
+        help="required: acknowledge that checkpoints are pickle and must be local/trusted",
     )
     bisect_parser = subcommands.add_parser(
         "bisect", help="locate a monotonic failure transition in captured metadata"
@@ -371,7 +371,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(rendered)
         else:
             atomic_write_text(arguments.output, rendered)
-        return EXIT_OK if benchmark_result.exit_code == 0 else EXIT_FAIL
+        if benchmark_result.exit_code == 0:
+            return EXIT_OK
+        if benchmark_result.metrics["internal_errors"]:
+            return EXIT_ERROR
+        return EXIT_FAIL
     if arguments.command == "benchmark" and arguments.benchmark_suite == "overhead":
         try:
             overhead_result = run_overhead_benchmark(
@@ -437,24 +441,16 @@ def _require_trusted_run(run: Path, *, trusted: bool) -> None:
     run_path = run.expanduser().resolve()
     if not run_path.exists():
         raise FileNotFoundError(f"run path does not exist: {run_path}")
-    default_root = (Path.cwd() / ".nabla" / "runs").resolve()
-    inside_default = False
-    try:
-        run_path.relative_to(default_root)
-        inside_default = True
-    except ValueError:
-        inside_default = False
-    if trusted or inside_default:
-        print(
-            "WARNING: capture checkpoints use pickle (torch.load weights_only=False). "
-            "Replay only trusted local runs produced by this process or an equivalent "
-            "trusted capture. NGF inspect never loads .pt files.",
-            file=sys.stderr,
+    if not trusted:
+        raise ValueError(
+            "refusing to load capture checkpoints without --i-trust-this-run; "
+            "checkpoints are pickle-based and must not come from untrusted sources"
         )
-        return
-    raise ValueError(
-        "refusing to load capture checkpoints without --i-trust-this-run; "
-        "checkpoints are pickle-based and must not come from untrusted sources"
+    print(
+        "WARNING: capture checkpoints use pickle (torch.load weights_only=False). "
+        "Replay only trusted local runs produced by this process or an equivalent "
+        "trusted capture. NGF inspect never loads .pt files.",
+        file=sys.stderr,
     )
 
 

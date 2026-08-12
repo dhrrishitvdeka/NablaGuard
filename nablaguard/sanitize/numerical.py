@@ -34,8 +34,11 @@ class ShadowComparison:
 def compare_shadow(real: torch.Tensor, shadow: torch.Tensor) -> ShadowComparison:
     """Compare real output with a high-precision shadow without retaining either."""
 
-    observed = real.detach().to(torch.float64)
-    reference = shadow.detach().to(torch.float64)
+    comparison_dtype = (
+        torch.complex128 if real.is_complex() or shadow.is_complex() else torch.float64
+    )
+    observed = real.detach().to(comparison_dtype)
+    reference = shadow.detach().to(comparison_dtype)
     if observed.shape != reference.shape or observed.numel() == 0:
         mismatch = 0 if observed.shape == reference.shape else 1
         error = 0.0 if mismatch == 0 else float("inf")
@@ -110,10 +113,18 @@ def reduction_cancellation(input_tensor: torch.Tensor, output: torch.Tensor) -> 
         torch.isfinite(output).all().item()
     ):
         return None
-    magnitude_sum = float(input_tensor.detach().to(torch.float64).abs().sum().item())
+    values = input_tensor.detach()
+    result = output.detach()
+    if values.is_complex():
+        magnitude_sum = float(values.abs().to(torch.float64).sum().item())
+    else:
+        magnitude_sum = float(values.to(torch.float64).abs().sum().item())
     if magnitude_sum == 0:
         return 0.0
-    result_magnitude = float(output.detach().to(torch.float64).abs().item())
+    if result.is_complex():
+        result_magnitude = float(result.abs().to(torch.float64).item())
+    else:
+        result_magnitude = float(result.to(torch.float64).abs().item())
     return max(0.0, min(1.0, 1.0 - result_magnitude / magnitude_sum))
 
 

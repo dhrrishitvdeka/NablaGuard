@@ -10,7 +10,7 @@ import torch
 from nablaguard.capture.rng import capture_rng_state, restore_rng_state
 
 from .compare import compare_tensors
-from .isolation import call_with_isolated_module_state
+from .isolation import call_with_isolated_module_state, leaf_copy
 from .results import Comparison
 
 
@@ -135,8 +135,8 @@ def compare_finite_difference(
         numerical = torch.empty(value.shape, dtype=torch.float64, device=value.device)
         flat = numerical.reshape(-1)
         for element in range(value.numel()):
-            positive = [item.detach().clone() for item in inputs]
-            negative = [item.detach().clone() for item in inputs]
+            positive = [_detached_layout_copy(item) for item in inputs]
+            negative = [_detached_layout_copy(item) for item in inputs]
             _perturb(positive[input_index], element, epsilon)
             _perturb(negative[input_index], element, -epsilon)
             with torch.no_grad():
@@ -222,13 +222,22 @@ def _perturb(value: torch.Tensor, linear_index: int, amount: float) -> None:
     value[tuple(reversed(coordinates))] += amount
 
 
-def _leaf(value: torch.Tensor) -> torch.Tensor:
-    """Clone a leaf for advanced checks without inventing requires_grad."""
+def _detached_layout_copy(value: torch.Tensor) -> torch.Tensor:
+    """Stride-preserving copy that is safe for in-place finite-difference probes."""
 
-    result = value.detach().clone(memory_format=torch.preserve_format)
-    if value.requires_grad and (result.is_floating_point() or result.is_complex()):
-        result.requires_grad_(True)
-    return result
+    copy = leaf_copy(value)
+    copy.requires_grad_(False)
+    return copy
+
+
+def _leaf(value: torch.Tensor) -> torch.Tensor:
+    """Clone a leaf for advanced checks without inventing requires_grad.
+
+    Uses the same stride-preserving copy as the base operator check so JVP,
+    finite-difference, double-backward, and determinism see the same layout.
+    """
+
+    return leaf_copy(value)
 
 
 def _outputs(value: Any) -> tuple[torch.Tensor, ...]:
@@ -240,7 +249,16 @@ def _outputs(value: Any) -> tuple[torch.Tensor, ...]:
 
 
 def _objective(value: Any) -> float:
-    return float(sum(tensor.to(torch.float64).sum() for tensor in _outputs(value)).item())
+    """Scalar matching an all-ones cotangent: Re(sum(output))."""
+
+    total = 0.0
+    for tensor in _outputs(value):
+        detached = tensor.detach()
+        if detached.is_complex():
+            total += float(detached.real.to(torch.float64).sum().item())
+        else:
+            total += float(detached.to(torch.float64).sum().item())
+    return total
 
 
 def _compare_outputs(

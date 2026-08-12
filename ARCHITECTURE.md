@@ -99,9 +99,10 @@ Replay restores the nearest full checkpoint at or before the requested boundary,
 then calls user code for every intervening step. The callback is responsible for
 reconstructing data and external state from metadata. Fingerprints and RNG
 digests produce `MATCH`, `DIVERGENCE`, or `UNVERIFIED`. `ReplayResult.passed`
-requires every requested step to be `MATCH`. Trusted local checkpoint loading
-uses Python pickle through `torch.load`; untrusted run directories must not be
-replayed.
+requires every requested step to be `MATCH`. An empty step list is a pass only
+when the restored checkpoint already is the requested boundary. Trusted local
+checkpoint loading uses Python pickle through `torch.load`. The CLI will not
+load a run without `--i-trust-this-run`.
 
 ## Training bisection and boundary diagnosis
 
