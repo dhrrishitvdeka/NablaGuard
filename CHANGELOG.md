@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- README now maps the public library: check, guard, trace, capture/replay/bisect,
+  contracts, precision, reports, CLI, and examples.
 - `check.fuzz` keeps `TensorSpec.requires_grad`, so wrong backwards are
   detected. `nabla check --trials N` uses the same path.
 - Advanced checks and finite-difference probes use the same stride-preserving
