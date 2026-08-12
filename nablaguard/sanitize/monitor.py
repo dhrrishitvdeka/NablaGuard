@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import weakref
 from collections.abc import Callable, Iterable
@@ -377,11 +378,9 @@ class Guard(Session):
         ) -> None:
             producers.pop(producer_key, None)
 
-        try:
+        # Some tensor subclasses reject weak references; keep a best-effort id map.
+        with contextlib.suppress(TypeError):
             self._producer_refs.append(weakref.ref(tensor, _forget))
-        except TypeError:
-            # Some tensor subclasses reject weak references; keep a best-effort id map.
-            pass
 
     def _operation_selected(self, overload_name: str, schema_name: str) -> bool:
         if self.operations is None:

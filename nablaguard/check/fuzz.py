@@ -17,10 +17,10 @@ from nablaguard.core.session import emit_issue
 
 from .artifacts import write_failure_artifact
 from .fuzz_results import FuzzFailure, FuzzResult
+from .isolation import leaf_copy
 from .minimizer import minimize as minimize_specs
 from .properties import Property
 from .results import Comparison, OperatorCheckResult
-from .isolation import leaf_copy
 from .runner import operator
 from .specs import TensorSpec, TensorStrategy
 

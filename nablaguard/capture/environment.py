@@ -15,7 +15,7 @@ from nablaguard.core.redaction import redact_value
 def environment_metadata() -> dict[str, Any]:
     """Describe runtime factors known to affect replay behavior."""
 
-    return redact_value(
+    document = redact_value(
         {
             "python": platform.python_version(),
             "python_implementation": platform.python_implementation(),
@@ -34,6 +34,9 @@ def environment_metadata() -> dict[str, Any]:
             "pid": os.getpid(),
         }
     )
+    if not isinstance(document, dict):
+        raise TypeError("environment metadata must be a mapping")
+    return document
 
 
 def determinism_limitations(environment: dict[str, Any]) -> list[str]:

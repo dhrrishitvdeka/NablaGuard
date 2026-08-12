@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI: fail-fast is off so one Python version cannot cancel the matrix; steps are
+  named. Ruff E501 / I001 / SIM105 that were failing the job are fixed.
 - README now maps the public library: check, guard, trace, capture/replay/bisect,
   contracts, precision, reports, CLI, and examples.
 - `check.fuzz` keeps `TensorSpec.requires_grad`, so wrong backwards are

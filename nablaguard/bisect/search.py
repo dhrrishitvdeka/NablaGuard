@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Literal, TypeVar
 
@@ -72,6 +72,7 @@ def first_bad(
     if verify_probes:
         # Binary search alone cannot prove monotonicity. Re-check every step in
         # small intervals, otherwise spot-check the claimed good/bad regions.
+        check_steps: Iterable[int]
         if known_bad - known_good <= 32:
             check_steps = range(known_good, known_bad + 1)
         else:

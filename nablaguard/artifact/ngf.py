@@ -310,7 +310,8 @@ def inspect_artifact(path: str | Path, *, verify_hashes: bool = True) -> NGFInsp
                 continue
             if size > _MAX_INSPECT_FILE_BYTES:
                 errors.append(
-                    f"file exceeds inspection size cap ({_MAX_INSPECT_FILE_BYTES} bytes): {relative}"
+                    f"file exceeds inspection size cap "
+                    f"({_MAX_INSPECT_FILE_BYTES} bytes): {relative}"
                 )
                 continue
             if size != entry.get("size_bytes"):
