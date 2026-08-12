@@ -2,7 +2,7 @@
   <img src="docs/assets/nablaguard-hero.svg" alt="NablaGuard — Debug the math, not just the code" width="100%">
 
   <a href="https://github.com/dhrrishitvdeka/NablaGuard/actions/workflows/ci.yml"><img src="https://github.com/dhrrishitvdeka/NablaGuard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-6366f1" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/version-1.0.1-6366f1" alt="Version 1.0.1">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776ab" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/PyTorch-2.2%2B-ee4c2c" alt="PyTorch 2.2+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e" alt="MIT license"></a>
@@ -42,7 +42,7 @@ See [compatibility](docs/compatibility.md).
 ## Install
 
 ```bash
-python -m pip install "https://github.com/dhrrishitvdeka/NablaGuard/releases/download/v1.0.0/nablaguard-1.0.0-py3-none-any.whl"
+python -m pip install "https://github.com/dhrrishitvdeka/NablaGuard/releases/download/v1.0.1/nablaguard-1.0.1-py3-none-any.whl"
 nabla --version
 ```
 

@@ -2,10 +2,8 @@
 
 ## Unreleased
 
-- CI: fail-fast is off so one Python version cannot cancel the matrix; steps are
-  named. Ruff E501 / I001 / SIM105 that were failing the job are fixed.
-- README now maps the public library: check, guard, trace, capture/replay/bisect,
-  contracts, precision, reports, CLI, and examples.
+## 1.0.1 — 2026-08-13
+
 - `check.fuzz` keeps `TensorSpec.requires_grad`, so wrong backwards are
   detected. `nabla check --trials N` uses the same path.
 - Advanced checks and finite-difference probes use the same stride-preserving
@@ -25,9 +23,9 @@
 - Gradient-norm contracts and cancellation/cosine helpers use magnitude /
   real inner products so complex tensors are well-defined.
 - BugBench internal errors map to CLI exit `3`.
-- Shadow failures emit `NG1005` / `SHADOW_UNSUPPORTED`. Fingerprints record
-  `checksum_scope` and `statistics_scope`. Session issue lists are bounded.
-- CLI exit taxonomy is `0` pass, `1` check-fail, `2` usage, `3` error.
+- CI: fail-fast is off so one Python version cannot cancel the matrix. Ruff and
+  mypy failures that blocked the job are fixed.
+- README maps the public library surface. Added `SECURITY.md`.
 
 ## 1.0.0 — 2026-08-09
 

@@ -10,7 +10,7 @@ from .core import NablaConfig, NablaIssue, Session, Severity, TensorEvent
 from .replay.runner import ReplayObservation, ReplayResult, replay
 from .sanitize import Guard, guard, sanitize, shadow_rule
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 __all__ = [
     "Guard",
